@@ -19,8 +19,13 @@ void ReadFromMem(
     const unsigned int DimK,
     DATA_TYPE *MatrixAInMem,
     DATA_TYPE *MatrixBInMem,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixA,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixB);
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixATri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri);
+
+void SystolicArray(
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixATri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &ResTri);
 
 // void Gemm(
 //     const unsigned int DimM,
@@ -44,7 +49,7 @@ extern "C"
         const unsigned int DimK,
         DATA_TYPE *MatrixAInMem,
         DATA_TYPE *MatrixBInMem,
-        RES_TYPE *MatrixRes);
+        RES_TYPE *MatrixResInMem);
 }
 
 #endif
