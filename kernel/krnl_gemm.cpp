@@ -142,23 +142,33 @@ void SystolicArray(
     hls::stream<DATA_TYPE> &Res)
 {
 
-    //     for (unsigned int IterRowMac = 0; IterRowMac < DATA_PACK_NUM; IterRowMac++)
-    //     {
-    // #pragma HLS UNROLL
-    //         WideType<DATA_TYPE, DATA_PACK_NUM> ASrl = 0;
-    //         DualTaggedType A = MatrixATaged[IterRowMac].read();
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> SumBuf[DATA_PACK_NUM];
+#pragma HLS ARRAY_PARTITION variable = SumBuf dim = 1 complete
 
-    //         ASrl.shift(A.m_val);
-    //     }
-
-    for (int i = 0; i < 256 * 128 + 7; i++)
+    for (unsigned int IterMac = 0; IterMac < DATA_PACK_NUM; IterMac++)
     {
-        WideType<DATA_TYPE, DATA_PACK_NUM> t = MatrixBTri[0].read();
-        for (int i = 0; i < DATA_PACK_NUM; i++)
+#pragma HLS UNROLL
+        bool exit;
+        WideType<DATA_TYPE, DATA_PACK_NUM> ASrl = WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt(0);
+        do
         {
-            std::cout << t[i] << " ";
-        }
-        std::cout << std::endl;
+#pragma HLS PIPELINE
+
+            DualTaggedType<DATA_TYPE> A = MatrixATaged[IterMac].read();
+            exit = A.m_exit;
+            ASrl.shift(A.m_val);
+            WideType<DATA_TYPE, DATA_PACK_NUM> B = MatrixBTri[IterMac].read();
+
+            WideType<DATA_TYPE, DATA_PACK_NUM> MulRes;
+            for (unsigned int IterMul = 0; IterMul < DATA_PACK_NUM; IterMul++)
+            {
+                MulRes[IterMul] = ASrl[IterMul] * B[IterMul];
+            }
+            SumBuf[IterMac].write(MulRes);
+
+            if (IterMac != DATA_PACK_NUM - 1)
+                MatrixBTri[IterMac + 1].write(B);
+        } while (!exit);
     }
 }
 
