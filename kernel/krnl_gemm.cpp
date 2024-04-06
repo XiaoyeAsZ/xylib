@@ -10,7 +10,7 @@
 #include "u280.h"
 #include <iostream>
 
-#define INDEX_FROM_2D(x, y) x *DATA_PACK_NUM + y
+#define INDEX_FROM_2D(x, y, c) x *c + y
 
 void ReadFromMem(
     const unsigned int DimM,
@@ -18,40 +18,41 @@ void ReadFromMem(
     const unsigned int DimK,
     DATA_TYPE *MatrixAInMem,
     DATA_TYPE *MatrixBInMem,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixATri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri)
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> *MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> *MatrixBTri)
 {
-    WideType<DATA_TYPE, DATA_PACK_NUM> TriBuf[DATA_PACK_NUM];
-#pragma HLS ARRAY_PARTITION variable = TriBuf dim = 1 complete
-
-    for (unsigned int IterBlockM; IterBlockM < DimM / DATA_PACK_NUM; IterBlockM++)
+    TriangSrl<DATA_TYPE, DATA_PACK_NUM> BTri;
+    BTri.clear();
+    for (unsigned int IterBlockM = 0; IterBlockM < DimM / DATA_PACK_NUM; IterBlockM++)
     {
-        for (unsigned int IterBlockN; IterBlockN < DimK / DATA_PACK_NUM; IterBlockN++)
+        for (unsigned int IterBlockN = 0; IterBlockN < DimK / DATA_PACK_NUM; IterBlockN++)
         {
-            WideType<DATA_TYPE, DATA_PACK_NUM> A;
-            TriangSrl<DATA_TYPE, DATA_PACK_NUM> ATri;
-            ATri.clear();
-            for (unsigned int IterCol; IterCol < DimN; IterCol++)
+            for (unsigned int IterCol = 0; IterCol < DimN; IterCol++)
             {
 #pragma HLS PIPELINE
                 for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
                 {
-                    A[IterEntry] = MatrixAInMem[(IterBlockM * DATA_PACK_NUM + IterEntry) * DimN + IterCol];
+                    DualTaggedType<DATA_TYPE> A;
+                    A.m_val = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
+                    A.m_flush = (IterCol == 0);
+                    A.m_exit = (IterCol == DimN - 1);
+                    MatrixATaged[IterEntry].write(A);
                 }
-                MatrixATri.write(ATri.shift(A));
             }
 
             WideType<DATA_TYPE, DATA_PACK_NUM> B;
-            TriangSrl<DATA_TYPE, DATA_PACK_NUM> BTri;
-            BTri.clear();
-            for (unsigned int IterRow; IterRow < DimN; IterRow++)
+
+            for (unsigned int IterRow = 0; IterRow < DimN; IterRow++)
             {
 #pragma HLS PIPELINE
-                B = *(WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixBInMem[IterRow * DimK + IterBlockN * DATA_PACK_NUM]);
-                MatrixBTri.write(BTri.shift(B));
+                B = *(WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixBInMem[INDEX_FROM_2D(IterRow, IterBlockN * DATA_PACK_NUM, DimK)]);
+                if (!(IterBlockM == 0 && IterBlockN == 0 && IterRow == 0))
+                    MatrixBTri[0].write(BTri.shift(B));
             }
         }
     }
+    for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM; IterRemain++)
+        MatrixBTri[0].write(BTri.shift(WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt(0)));
 }
 
 // void SystolicArray(
@@ -135,6 +136,32 @@ void ReadFromMem(
 //     }
 // }
 
+void SystolicArray(
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> *MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> *MatrixBTri,
+    hls::stream<DATA_TYPE> &Res)
+{
+
+    //     for (unsigned int IterRowMac = 0; IterRowMac < DATA_PACK_NUM; IterRowMac++)
+    //     {
+    // #pragma HLS UNROLL
+    //         WideType<DATA_TYPE, DATA_PACK_NUM> ASrl = 0;
+    //         DualTaggedType A = MatrixATaged[IterRowMac].read();
+
+    //         ASrl.shift(A.m_val);
+    //     }
+
+    for (int i = 0; i < 256 * 128 + 7; i++)
+    {
+        WideType<DATA_TYPE, DATA_PACK_NUM> t = MatrixBTri[0].read();
+        for (int i = 0; i < DATA_PACK_NUM; i++)
+        {
+            std::cout << t[i] << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
 extern "C"
 {
 
@@ -144,13 +171,17 @@ extern "C"
         const unsigned int DimK,
         DATA_TYPE MatrixAInMem[MAX_MATRIX_SIZE],
         DATA_TYPE MatrixBInMem[MAX_MATRIX_SIZE],
-        RES_TYPE MatrixResInMem[MAX_MATRIX_SIZE])
+        DATA_TYPE MatrixResInMem[MAX_MATRIX_SIZE])
     {
 
-        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixATri;
-        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixBTri;
+        hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> MatrixATaged[DATA_PACK_NUM];
+        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixBTri[DATA_PACK_NUM];
+        hls::stream<DATA_TYPE> Res;
+#pragma HLS ARRAY_PARTITION variable = MatrixATaged dim = 1 complete
+#pragma HLS ARRAY_PARTITION variable = MatrixBTri dim = 1 complete
 
 #pragma HLS DATAFLOW
-        ReadFromMem(DimM, DimN, DimK, MatrixAInMem, MatrixBInMem, MatrixATri, MatrixBTri);
+        ReadFromMem(DimM, DimN, DimK, MatrixAInMem, MatrixBInMem, MatrixATaged, MatrixBTri);
+        SystolicArray(MatrixATaged, MatrixBTri, Res);
     }
 }

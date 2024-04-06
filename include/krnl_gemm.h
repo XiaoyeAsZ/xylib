@@ -49,7 +49,7 @@ extern "C"
         const unsigned int DimK,
         DATA_TYPE *MatrixAInMem,
         DATA_TYPE *MatrixBInMem,
-        RES_TYPE *MatrixResInMem);
+        DATA_TYPE *MatrixResInMem);
 }
 
 #endif
