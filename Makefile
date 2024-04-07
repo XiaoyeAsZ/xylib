@@ -59,8 +59,8 @@ HOST_SRC_HEADERS += $(HEAD_REPO)/*.hpp
 ############## Kernel Source Files  Dependencies
 # KERNEL_SRC_CPP = $(shell find . -type f -wholename '$(KERNEL_REPO)/krnl_*.cpp')
 # KERNEL_SRC_HEADERS = $(shell find . -type f -wholename '$(HEAD_REPO)/krnl_*.h')
-KERNEL_SRC_CPP := $(KERNEL_REPO)/krnl_gemv.cpp
-KERNEL_SRC_HEADERS := $(HEAD_REPO)/krnl_gemv.h
+KERNEL_SRC_CPP := $(KERNEL_REPO)/krnl_gemm.cpp
+KERNEL_SRC_HEADERS := $(HEAD_REPO)/krnl_gemm.h
 KERNEL_INCLUDES := -I$(HEAD_REPO)
 
 ############## Check the version of gcc avaiable and select
@@ -116,7 +116,7 @@ $(BUILD_DIR)/$(XO_NAME).xo: $(KERNEL_SRC_CPP) $(KERNEL_SRC_HEADERS)
 	mkdir -p $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
 	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
-	v++ $(VPPFLAGS) -c -k KrnlGemv  $(KERNEL_INCLUDES) $(KERNEL_SRC_CPP) -o $@
+	v++ $(VPPFLAGS) -c -k KrnlGemm  $(KERNEL_INCLUDES) $(KERNEL_SRC_CPP) -o $@
 # Link Kernel
 $(BUILD_DIR)/$(XCLBIN): $(BUILD_DIR)/$(XO_NAME).xo
 	v++ $(VPPFLAGS) -l -o $@ $(BUILD_DIR)/$(XO_NAME).xo

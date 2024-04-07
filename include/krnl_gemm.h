@@ -19,27 +19,51 @@ void ReadFromMem(
     const unsigned int DimK,
     DATA_TYPE *MatrixAInMem,
     DATA_TYPE *MatrixBInMem,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixATri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri);
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> *MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> *MatrixBTri);
+
+void Mac(
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
+    hls::stream<DATA_TYPE> &AccRes);
+
+void Mac(
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTriNxt,
+    hls::stream<DATA_TYPE> &AccRes);
+
+void Mul(
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> &SumBuf,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Flush,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Exit);
+
+void Mul(
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTriNxt,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> &SumBuf,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Flush,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Exit);
+
+void Add(
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> &SumBuf,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Flush,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Exit,
+    hls::stream<DATA_TYPE> &AccRes);
 
 void SystolicArray(
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixATri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &ResTri);
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> *MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> *MatrixBTri,
+    hls::stream<DATA_TYPE> *AccRes);
 
-// void Gemm(
-//     const unsigned int DimM,
-//     const unsigned int DimN,
-//     const unsigned int DimK,
-//     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixA,
-//     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixB,
-//     hls::stream<WideType<RES_TYPE, DATA_PACK_NUM>::t_TypeInt> &Res);
-
-// void WriteToMem(
-//     const unsigned int DimM,
-//     const unsigned int DimK,
-//     RES_TYPE *ResInMem,
-//     hls::stream<WideType<RES_TYPE, DATA_PACK_NUM>::t_TypeInt> &Res);
+void WriteToMem(
+    const unsigned int DimM,
+    const unsigned int DimK,
+    hls::stream<DATA_TYPE> *AccRes,
+    DATA_TYPE *MatrixResInMem);
 
 extern "C"
 {
