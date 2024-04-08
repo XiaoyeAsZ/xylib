@@ -5,6 +5,9 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <random>
+
+#include "ap_int.h"
 
 #include "xcl2.hpp"
 #include "cmdlineparser.h"
@@ -14,14 +17,125 @@ using namespace sda;
 using namespace sda::utils;
 
 template <typename DType>
-DType GenerateRandomInput(unsigned int InputTokenLen = 16)
+DType *GenerateRandomInput(unsigned int InputTokenLen = 16)
 {
-    
+    DType *GeneratedInput = new DType[InputTokenLen];
+    for (unsigned int IterRnd = 0; IterRnd < InputTokenLen; IterRnd++)
+        GeneratedInput[IterRnd] = DType(rand());
+    return GeneratedInput;
+}
+
+// template <typename DType>
+// AttentionLayer::AttentionLayer();
+
+// template <typename DType>
+// AttentionLayer::AttentionLayer(PonyTensor<DType> WQIn, PonyTensor<DType> WKIn, PonyTensor<DType> WVIn)
+// {
+//     this->WQ = WQIn;
+//     this->WK = WKIn;
+//     this->WV = WVIn;
+// };
+
+// template <typename DType>
+// FFNLayer::FFNLayer();
+
+// template <typename DType>
+// FFNLayer::FFNLayer(PonyTensor<DType> WIn)
+// {
+//     this->W = WIn;
+// }
+
+// template <typename DType>
+// FFNLayer::forward(PonyTensor<DType> TokenInput, unsigned int TokenLen)
+// {
+// }
+
+template <typename DType>
+GemmRequest<DType>::GemmRequest(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue)
+{
+    cl_int err;
+
+    this->Q = Queue;
+
+    OCL_CHECK(err, kernel = cl::Kernel(Program, "KrnlGemm", &err));
+
+    OCL_CHECK(err, MatrixABuf = cl::Buffer(Ctx, CL_MEM_READ_ONLY, (GEMM_MAX_MATRIX_M * GEMM_MAX_MATRIX_N) * sizeof(DType), nullptr, &err));
+    OCL_CHECK(err, MatrixBBuf = cl::Buffer(Ctx, CL_MEM_READ_ONLY, (GEMM_MAX_MATRIX_N * GEMM_MAX_MATRIX_K) * sizeof(DType), nullptr, &err));
+    OCL_CHECK(err, MatrixResBuf = cl::Buffer(Ctx, CL_MEM_WRITE_ONLY, (GEMM_MAX_MATRIX_M * GEMM_MAX_MATRIX_K) * sizeof(DType), nullptr, &err));
+    OCL_CHECK(err, err = kernel.setArg(3, MatrixABuf));
+    OCL_CHECK(err, err = kernel.setArg(4, MatrixBBuf));
+    OCL_CHECK(err, err = kernel.setArg(5, MatrixResBuf));
+
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({MatrixABuf, MatrixBBuf, MatrixResBuf}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
+
+    q.finish();
+}
+
+template <typename DType>
+GemmRequest<DType>::run(PonyTensor<DType> &MatrixA, PonyTensor<DType> &MatrixB, PonyTensor<DType> &Res)
+{
+    assert(MatrixA.dim0 <= GEMM_MAX_MATRIX_M);
+    assert(MatrixA.dim1 <= GEMM_MAX_MATRIX_N);
+    assert(MatrixB.dim0 <= GEMM_MAX_MATRIX_N);
+    assert(MatrixB.dim1 <= GEMM_MAX_MATRIX_K);
+    assert(MatrixA.dim1 == MatrixB.dim0);
+
+    cl_int err;
+    cl::Event ReadEventMatrixA;
+    cl::Event ReadEventMatrixB;
+    cl::Event RunEvent;
+    cl::Event ResEvent;
+
+    this->finish();
+
+    OCL_CHECK(err, err = kernel.setArg(0, MatrixA.dim0));
+    OCL_CHECK(err, err = kernel.setArg(1, MatrixA.dim1));
+    OCL_CHECK(err, err = kernel.setArg(2, MatrixB.dim1));
+
+    OCL_CHECK(err, err = q.enqueueWriteBuffer(MatrixABuf, CL_FALSE, 0, (MatrixA.dim0 * MatrixA.dim1) * sizeof(DType), MatrixA.Data, nullptr, &ReadEventMatrixA));
+    OCL_CHECK(err, err = q.enqueueWriteBuffer(MatrixBBuf, CL_FALSE, 0, (MatrixB.dim0 * MatrixB.dim1) * sizeof(DType), MatrixB.Data, nullptr, &ReadEventMatrixB));
+    Events.push_back(ReadEventMatrixA);
+    Events.push_back(ReadEventMatrixB);
+
+    OCL_CHECK(err, err = q.enqueueTask(Kernel, &Events, &RunEvent));
+    Events.push_back(RunEvent);
+
+    OCL_CHECK(err, err = q.enqueueReadBuffer(MatrixResBuf, CL_FALSE, 0, (MatrixA.dim0 * MatrixB.dim1) * sizeof(DType), Res.Data, &Events, &ResEvent));
+    Events.push_back(ResEvent);
+    Res.dim0 = MatrixA.dim0;
+    Res.dim1 = MatrixB.dim1;
+}
+
+template <typename DType>
+GemmRequest<DType>::finish()
+{
+    if (events.size() > 0)
+    {
+        events.back().wait();
+        events.clear();
+        if (getenv("XCL_EMULATION_MODE") != NULL)
+        {
+            printf("Finished Gemm Request\n");
+        }
+    }
+}
+
+template <typename ReqType, typename DType>
+KrnlDispatch<ReqType>::KrnlDispatch(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue, unsigned int MaxReq)
+{
+    this->ReqNumMax = MaxReq;
+    for (unsigned int IterReq = 0; IterReq < this->ReqNumMax; IterReq++)
+        this->Reqs.push_back(ReqType(Ctx, Program, Queue));
+}
+
+template <typename ReqType, typename DType>
+KrnlDispatch<ReqType>::request(PonyTensor<DType> &MatrixA, PonyTensor<DType> &MatrixB, PonyTensor<DType> &Res)
+{
+    this->Reqs[(this->Round++) % this->ReqNumMax].run(MatrixA, MatrixB, Res);
 }
 
 int main(int argc, char **argv)
 {
-
     CmdLineParser parser;
     parser.addSwitch("--fpga", "-x", "FPGA binary (xclbin) file to use");
 
@@ -35,11 +149,11 @@ int main(int argc, char **argv)
     }
 
     printf("FPGA binary       : %s\n", fpgaBinary.c_str());
-
     printf("Programming FPGA device\n");
+
     cl_int err;
     std::vector<cl::Device> devices = xcl::get_xil_devices();
-    devices.resize(1); // (arbitrarily) use the first Xilinx device that is found
+    devices.resize(1);
     OCL_CHECK(err, cl::Context context(devices[0], NULL, NULL, NULL, &err));
     unsigned fileBufSize;
     char *fileBuf = xcl::read_binary_file(fpgaBinary.c_str(), fileBufSize);
@@ -47,97 +161,5 @@ int main(int argc, char **argv)
     OCL_CHECK(err, cl::Program program(context, devices, bins, NULL, &err));
     OCL_CHECK(err, cl::CommandQueue queue(context, devices[0], cl::QueueProperties::Profiling | cl::QueueProperties::OutOfOrder, &err));
 
-    auto matrixA = new int[MATRIX_M * MATRIX_N];
-    auto matrixB = new int[MATRIX_N * MATRIX_K];
-    auto res = new int[MATRIX_M * MATRIX_K];
-    auto ref = new int[MATRIX_M * MATRIX_K];
-
-    for (int i = 0; i < MATRIX_M; i++)
-    {
-        for (int j = 0; j < MATRIX_N; j++)
-        {
-            matrixA[i * MATRIX_N + j] = rand();
-        }
-    }
-
-    for (int i = 0; i < MATRIX_N; i++)
-    {
-        for (int j = 0; j < MATRIX_K; j++)
-        {
-            matrixB[i * MATRIX_K + j] = rand();
-        }
-    }
-
-    for (int i = 0; i < MATRIX_M; i++)
-    {
-        for (int j = 0; j < MATRIX_N; j++)
-        {
-            int tmp = 0;
-            for (int k = 0; k < MATRIX_K; k++)
-                tmp += matrixA[i * MATRIX_N + k] * matrixB[k * MATRIX_K + j];
-            ref[i * MATRIX_K + j] = tmp;
-        }
-    }
-
-    printf("Running FPGA accelerator\n");
-
-    cl::Buffer matrixA_buf;
-    cl::Buffer matrixB_buf;
-    // cl::Buffer vector_buf;
-    cl::Buffer result_buf;
-    OCL_CHECK(err, matrixA_buf = cl::Buffer(context, CL_MEM_READ_ONLY, (MATRIX_M * MATRIX_N) * sizeof(int), nullptr, &err));
-    OCL_CHECK(err, matrixB_buf = cl::Buffer(context, CL_MEM_READ_ONLY, (MATRIX_N * MATRIX_K) * sizeof(int), nullptr, &err));
-    // OCL_CHECK(err, vector_buf = cl::Buffer(context, CL_MEM_READ_ONLY, (128) * sizeof(int), nullptr, &err));
-    OCL_CHECK(err, result_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, (MATRIX_M * MATRIX_K) * sizeof(int), nullptr, &err));
-
-    cl::Event in1_event;
-    cl::Event in2_event;
-    cl::Event run_event;
-    cl::Event out_event;
-    std::vector<cl::Event> events;
-
-    cl::Kernel kernel;
-    OCL_CHECK(err, kernel = cl::Kernel(program, "KrnlGemm", &err));
-    OCL_CHECK(err, err = kernel.setArg(0, MATRIX_M));
-    OCL_CHECK(err, err = kernel.setArg(1, MATRIX_N));
-    OCL_CHECK(err, err = kernel.setArg(2, MATRIX_K));
-    OCL_CHECK(err, err = kernel.setArg(3, matrixA_buf));
-    OCL_CHECK(err, err = kernel.setArg(4, matrixB_buf));
-    OCL_CHECK(err, err = kernel.setArg(5, result_buf));
-
-    size_t offset = 0;
-    OCL_CHECK(err, err = queue.enqueueMigrateMemObjects({matrixA_buf, matrixB_buf, result_buf}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
-    queue.finish();
-
-    auto fpga_begin = std::chrono::high_resolution_clock::now();
-
-    OCL_CHECK(err, err = queue.enqueueWriteBuffer(matrixA_buf, CL_FALSE, offset, MATRIX_M * MATRIX_N * sizeof(int), matrixA, nullptr, &in1_event));
-    events.push_back(in1_event);
-    OCL_CHECK(err, err = queue.enqueueWriteBuffer(matrixB_buf, CL_FALSE, offset, MATRIX_N * MATRIX_K * sizeof(int), matrixB, nullptr, &in2_event));
-    events.push_back(in2_event);
-    OCL_CHECK(err, err = queue.enqueueTask(kernel, &events, &run_event));
-    events.push_back(run_event);
-    OCL_CHECK(err, err = queue.enqueueReadBuffer(result_buf, CL_FALSE, offset, MATRIX_M * MATRIX_N * sizeof(int), res, &events, &out_event));
-    events.push_back(out_event);
-
-    events.back().wait();
-    events.clear();
-
-    auto fpga_end = std::chrono::high_resolution_clock::now();
-
-    std::chrono::duration<double> fpga_duration = fpga_end - fpga_begin;
-
-    bool flag = 1;
-    for (int i = 0; i < MATRIX_M; i++)
-    {
-        for (int j = 0; j < MATRIX_K; j++)
-        {
-            if (ref[i * MATRIX_K + j] != res[i * MATRIX_K + j])
-                flag = 0;
-        }
-    }
-
-    std::cout << (flag ? "Test PASS !!!" : "ERROR !!!") << std::endl;
-
-    printf("FPGA Time         : %10.4f s\n", fpga_duration.count());
+    KrnlDispatch<GemmRequest, int> GemmDispatch(context, program, queue, 1);
 }
