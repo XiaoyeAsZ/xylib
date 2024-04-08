@@ -18,54 +18,137 @@ void ReadFromMem(
     const unsigned int DimK,
     DATA_TYPE *MatrixAInMem,
     DATA_TYPE *MatrixBInMem,
-    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> *MatrixATaged,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri)
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixA,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixB)
 {
-    TriangSrl<DATA_TYPE, DATA_PACK_NUM> BTri;
-    BTri.clear();
     for (unsigned int IterBlockM = 0; IterBlockM < DimM / DATA_PACK_NUM; IterBlockM++)
     {
         for (unsigned int IterBlockN = 0; IterBlockN < DimK / DATA_PACK_NUM; IterBlockN++)
         {
+
             for (unsigned int IterCol = 0; IterCol < DimN; IterCol++)
             {
 #pragma HLS PIPELINE
+                WideType<DATA_TYPE, DATA_PACK_NUM> A;
+                for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
+                {
+                    A[IterEntry] = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
+                }
+                std::cout << "read A(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
+                MatrixA.write(A);
+
+                WideType<DATA_TYPE, DATA_PACK_NUM> B;
+                B = *(WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixBInMem[INDEX_FROM_2D(IterCol, IterBlockN * DATA_PACK_NUM, DimK)]);
+                std::cout << "read B(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
+                MatrixB.write(B);
+            }
+
+            //             for (unsigned int IterCol = 0; IterCol < DimN; IterCol++)
+            //             {
+            // #pragma HLS PIPELINE
+            //                 WideType<DATA_TYPE, DATA_PACK_NUM> A;
+            //                 for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
+            //                 {
+            //                     A[IterEntry] = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
+            //                 }
+            //                 std::cout << "read A(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
+
+            //                 MatrixA.write(A);
+            //             }
+
+            //             for (unsigned int IterRow = 0; IterRow < DimN; IterRow++)
+            //             {
+            // #pragma HLS PIPELINE
+            //                 WideType<DATA_TYPE, DATA_PACK_NUM> B;
+            //                 B = *(WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixBInMem[INDEX_FROM_2D(IterRow, IterBlockN * DATA_PACK_NUM, DimK)]);
+            //                 std::cout << "read B(" << IterBlockM << "," << IterBlockN << "," << IterRow << ")\n";
+            //                 MatrixB.write(B);
+            //             }
+        }
+    }
+}
+
+void UnpackTri(
+    const unsigned int DimM,
+    const unsigned int DimN,
+    const unsigned int DimK,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixA,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixB,
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> *MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri)
+{
+    TriangSrl<DATA_TYPE, DATA_PACK_NUM> BTri;
+    BTri.clear();
+
+    for (unsigned int IterBlockM = 0; IterBlockM < DimM / DATA_PACK_NUM; IterBlockM++)
+    {
+        for (unsigned int IterBlockN = 0; IterBlockN < DimK / DATA_PACK_NUM; IterBlockN++)
+        {
+
+            for (unsigned int IterCol = 0; IterCol < DimN; IterCol++)
+            {
+#pragma HLS PIPELINE
+                WideType<DATA_TYPE, DATA_PACK_NUM> TA = MatrixA.read();
                 for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
                 {
                     DualTaggedType<DATA_TYPE> A;
-                    A.m_val = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
+                    A.m_val = TA[IterEntry];
                     A.m_flush = (IterCol == DimN - 1);
                     A.m_exit = (IterBlockM == DimM / DATA_PACK_NUM - 1 && IterBlockN == DimK / DATA_PACK_NUM - 1 && IterCol == DimN - 1);
                     MatrixATaged[IterEntry].write(A);
                 }
-            }
 
-            WideType<DATA_TYPE, DATA_PACK_NUM> B;
-
-            for (unsigned int IterRow = 0; IterRow < DimN; IterRow++)
-            {
-#pragma HLS PIPELINE
-                B = *(WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixBInMem[INDEX_FROM_2D(IterRow, IterBlockN * DATA_PACK_NUM, DimK)]);
-                if (!(IterBlockM == 0 && IterBlockN == 0 && IterRow == 0))
+                WideType<DATA_TYPE, DATA_PACK_NUM> B;
+                B = MatrixB.read();
+                if (!(IterBlockM == 0 && IterBlockN == 0 && IterCol == 0))
                     MatrixBTri.write(BTri.shift(B));
                 else
                     BTri.shift(B);
             }
+
+            if (IterBlockM == DimM / DATA_PACK_NUM - 1 && IterBlockN == DimK / DATA_PACK_NUM - 1)
+            {
+                for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM; IterRemain++)
+                    MatrixBTri.write(BTri.shift(WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt(0)));
+            }
+
+            //             for (unsigned int IterCol = 0; IterCol < DimN; IterCol++)
+            //             {
+            // #pragma HLS PIPELINE
+            //                 WideType<DATA_TYPE, DATA_PACK_NUM> TA = MatrixA.read();
+            //                 for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
+            //                 {
+            //                     DualTaggedType<DATA_TYPE> A;
+            //                     A.m_val = TA[IterEntry];
+            //                     A.m_flush = (IterCol == DimN - 1);
+            //                     A.m_exit = (IterBlockM == DimM / DATA_PACK_NUM - 1 && IterBlockN == DimK / DATA_PACK_NUM - 1 && IterCol == DimN - 1);
+            //                     MatrixATaged[IterEntry].write(A);
+            //                 }
+            //             }
+
+            //             WideType<DATA_TYPE, DATA_PACK_NUM> B;
+            //             for (unsigned int IterRow = 0; IterRow < DimN; IterRow++)
+            //             {
+            // #pragma HLS PIPELINE
+            //                 B = MatrixB.read();
+            //                 if (!(IterBlockM == 0 && IterBlockN == 0 && IterRow == 0))
+            //                     MatrixBTri.write(BTri.shift(B));
+            //                 else
+            //                     BTri.shift(B);
+            //             }
         }
     }
-    for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM; IterRemain++)
-        MatrixBTri.write(BTri.shift(WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt(0)));
 }
 
 void Mac(
-    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
-    hls::stream<DATA_TYPE> &AccRes)
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
 {
 
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> SumBuf;
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> Flush;
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> Exit;
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Flush;
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Exit;
 
 #pragma HLS DATAFLOW
     Mul(MatrixATaged, MatrixBTri, SumBuf, Flush, Exit);
@@ -73,15 +156,15 @@ void Mac(
 }
 
 void Mac(
-    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTriNxt,
-    hls::stream<DATA_TYPE> &AccRes)
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTriNxt,
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
 {
 
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> SumBuf;
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> Flush;
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> Exit;
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Flush;
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Exit;
 
 #pragma HLS DATAFLOW
     Mul(MatrixATaged, MatrixBTri, MatrixBTriNxt, SumBuf, Flush, Exit);
@@ -89,11 +172,11 @@ void Mac(
 }
 
 void Mul(
-    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> &SumBuf,
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Flush,
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Exit)
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit)
 {
 
     bool exit;
@@ -123,33 +206,36 @@ void Mul(
         Flush.write(AFlush);
         Exit.write(AExit);
 
-    } while (!exit);
-
-    for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM - 1; IterRemain++)
-    {
-        ASrl.shift(0);
-        AFlush.shift(0);
-        AExit.shift(0);
-
-        B = MatrixBTri.read();
-        for (unsigned int IterMul = 0; IterMul < DATA_PACK_NUM; IterMul++)
+        if (exit)
         {
-            MulRes[IterMul] = ASrl[IterMul] * B[IterMul];
+            for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM - 1; IterRemain++)
+            {
+                ASrl.shift(0);
+                AFlush.shift(0);
+                AExit.shift(0);
+
+                B = MatrixBTri.read();
+                for (unsigned int IterMul = 0; IterMul < DATA_PACK_NUM; IterMul++)
+                {
+                    MulRes[IterMul] = ASrl[IterMul] * B[IterMul];
+                }
+
+                SumBuf.write(MulRes);
+                Flush.write(AFlush);
+                Exit.write(AExit);
+            }
         }
 
-        SumBuf.write(MulRes);
-        Flush.write(AFlush);
-        Exit.write(AExit);
-    }
+    } while (!exit);
 }
 
 void Mul(
-    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> &MatrixATaged,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &MatrixBTriNxt,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> &SumBuf,
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Flush,
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Exit)
+    hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTriNxt,
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit)
 {
 
     bool exit;
@@ -182,33 +268,36 @@ void Mul(
 
         MatrixBTriNxt.write(B);
 
-    } while (!exit);
-
-    for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM - 1; IterRemain++)
-    {
-        ASrl.shift(0);
-        AFlush.shift(0);
-        AExit.shift(0);
-
-        B = MatrixBTri.read();
-        for (unsigned int IterMul = 0; IterMul < DATA_PACK_NUM; IterMul++)
+        if (exit)
         {
-            MulRes[IterMul] = ASrl[IterMul] * B[IterMul];
+            for (unsigned int IterRemain = 0; IterRemain < DATA_PACK_NUM - 1; IterRemain++)
+            {
+                ASrl.shift(0);
+                AFlush.shift(0);
+                AExit.shift(0);
+
+                B = MatrixBTri.read();
+                for (unsigned int IterMul = 0; IterMul < DATA_PACK_NUM; IterMul++)
+                {
+                    MulRes[IterMul] = ASrl[IterMul] * B[IterMul];
+                }
+
+                SumBuf.write(MulRes);
+                Flush.write(AFlush);
+                Exit.write(AExit);
+
+                MatrixBTriNxt.write(B);
+            }
         }
 
-        SumBuf.write(MulRes);
-        Flush.write(AFlush);
-        Exit.write(AExit);
-
-        MatrixBTriNxt.write(B);
-    }
+    } while (!exit);
 }
 
 void Add(
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> &SumBuf,
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Flush,
-    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> &Exit,
-    hls::stream<DATA_TYPE> &AccRes)
+    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
+    hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit,
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
 {
     WideType<DATA_TYPE, DATA_PACK_NUM> SumVec = WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt(0);
 
@@ -234,11 +323,10 @@ void Add(
     } while (!exit);
 }
 
-
 void WriteToMem(
     const unsigned int DimM,
     const unsigned int DimK,
-    hls::stream<DATA_TYPE> *AccRes,
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> *AccRes,
     DATA_TYPE *MatrixResInMem)
 {
     for (unsigned int IterBlockM = 0; IterBlockM < DimM / DATA_PACK_NUM; IterBlockM++)
@@ -271,26 +359,32 @@ extern "C"
         DATA_TYPE MatrixResInMem[MAX_MATRIX_SIZE])
     {
 
-        hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt> MatrixATaged[DATA_PACK_NUM];
-        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> MatrixBTri[DATA_PACK_NUM];
-        hls::stream<DATA_TYPE> AccRes[DATA_PACK_NUM];
+        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixA;
+        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixB;
+
+        hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> MatrixATaged[DATA_PACK_NUM];
+        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixBTri[DATA_PACK_NUM];
+
+        hls::stream<DATA_TYPE, DATA_PACK_NUM> AccRes[DATA_PACK_NUM];
+
 #pragma HLS ARRAY_PARTITION variable = MatrixATaged dim = 1 complete
 #pragma HLS ARRAY_PARTITION variable = MatrixBTri dim = 1 complete
 #pragma HLS ARRAY_PARTITION variable = AccRes dim = 1 complete
-#pragma HLS stream variable = MatrixATaged depth = 16
-#pragma HLS stream variable = MatrixBTri[0] depth = 16
-#pragma HLS stream variable = AccRes depth = 16
+#pragma HLS stream variable = MatrixATaged depth = DATA_PACK_NUM
+#pragma HLS stream variable = MatrixBTri[0] depth = DATA_PACK_NUM
+#pragma HLS stream variable = AccRes depth = DATA_PACK_NUM
 
-#pragma HLS DATAFLOW
-        ReadFromMem(DimM, DimN, DimK, MatrixAInMem, MatrixBInMem, MatrixATaged, MatrixBTri[0]);
-        // SystolicArray(MatrixATaged, MatrixBTri, AccRes);
-
-        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>> SumBuf[DATA_PACK_NUM];
-        hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> Flush[DATA_PACK_NUM];
-        hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt> Exit[DATA_PACK_NUM];
+        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>, DATA_PACK_NUM> SumBuf[DATA_PACK_NUM];
+        hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Flush[DATA_PACK_NUM];
+        hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Exit[DATA_PACK_NUM];
 #pragma HLS ARRAY_PARTITION variable = SumBuf dim = 1 complete
 #pragma HLS ARRAY_PARTITION variable = Flush dim = 1 complete
 #pragma HLS ARRAY_PARTITION variable = Exit dim = 1 complete
+
+#pragma HLS DATAFLOW
+        ReadFromMem(DimM, DimN, DimK, MatrixAInMem, MatrixBInMem, MatrixA, MatrixB);
+
+        UnpackTri(DimM, DimN, DimK, MatrixA, MatrixB, MatrixATaged, MatrixBTri[0]);
 
         for (unsigned int IterMac = 0; IterMac < DATA_PACK_NUM - 1; IterMac++)
         {

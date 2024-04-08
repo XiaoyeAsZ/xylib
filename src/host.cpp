@@ -68,10 +68,10 @@ int main(int argc, char **argv)
 
   for (int i = 0; i < MATRIX_M; i++)
   {
-    for (int j = 0; j < MATRIX_N; j++)
+    for (int j = 0; j < MATRIX_K; j++)
     {
       int tmp = 0;
-      for (int k = 0; k < MATRIX_K; k++)
+      for (int k = 0; k < MATRIX_N; k++)
         tmp += matrixA[i * MATRIX_N + k] * matrixB[k * MATRIX_K + j];
       ref[i * MATRIX_K + j] = tmp;
     }
@@ -115,7 +115,7 @@ int main(int argc, char **argv)
   events.push_back(in2_event);
   OCL_CHECK(err, err = queue.enqueueTask(kernel, &events, &run_event));
   events.push_back(run_event);
-  OCL_CHECK(err, err = queue.enqueueReadBuffer(result_buf, CL_FALSE, offset, MATRIX_M * MATRIX_N * sizeof(int), res, &events, &out_event));
+  OCL_CHECK(err, err = queue.enqueueReadBuffer(result_buf, CL_FALSE, offset, MATRIX_M * MATRIX_K * sizeof(int), res, &events, &out_event));
   events.push_back(out_event);
 
   events.back().wait();
