@@ -3,15 +3,23 @@
 
 #define LAYER_NUM 32
 #define HEAD_NUM 32
-#define EMBEDDING_DIM 4 * 1024
+#define EMBEDDING_DIM 64
+#define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
 #define GEMM_MAX_MATRIX_K 4096
 
 #include <vector>
 
+struct TensorOnFPGA
+{
+    cl::Buffer Data;
+    unsigned int Dim0;
+    unsigned int Dim1;
+};
+
 template <typename DType>
-struct PonyTensor
+struct TensorOnHost
 {
     DType *Data;
     unsigned int Dim0;
@@ -43,14 +51,17 @@ struct PonyTensor
 // class FFNLayer
 // {
 // private:
-//     PonyTensor<DType> W;
+//     TensorOnHost<DType> WOnHost;
+//     cl::Buffer WOnFpga;
+//     cl::Buffer ResOnFPGA;
 
 // public:
 //     FFNLayer();
-//     FFNLayer(PonyTensor<DType> WIn);
+//     FFNLayer(TensorOnHost<DType> WIn);
 //     ~FFNLayer();
 
-//     PonyTensor<DType> forward(PonyTensor<DType> TokenInput, unsigned int TokenLen);
+//     cl::Buffer migrate(cl::Context &Ctx, cl::CommandQueue &Queue);
+//     TensorOnFPGA forward(TensorOnFPGA TokenInput);
 // };
 
 // template <typename DType>
@@ -71,32 +82,32 @@ class GemmRequest
 private:
     cl::Kernel Kernel;
     cl::CommandQueue Q;
-    std::vector<cl::Event> Events;
+
     cl::Buffer MatrixABuf;
     cl::Buffer MatrixBBuf;
     cl::Buffer MatrixResBuf;
 
 public:
     GemmRequest(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue);
-    ~GemmRequest();
+    ~GemmRequest(){};
 
-    void run(PonyTensor<DType> &MatrixA, PonyTensor<DType> &MatrixB, PonyTensor<DType> &Res);
+    void run(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res, std::vector<cl::Event> &Events);
     void finish();
 };
 
-template <typename ReqType, typename DType>
-class KrnlDispatch
+template <typename DType>
+class GemmDispatch
 {
 private:
-    std::vector<ReqType> Reqs;
+    std::vector<GemmRequest<DType>> Reqs;
     unsigned int ReqNumMax = 1;
     unsigned int Round = 0;
 
 public:
-    KrnlDispatch(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue, unsigned int MaxReq);
-    ~KrnlDispatch();
+    GemmDispatch(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue, unsigned int MaxReq);
+    ~GemmDispatch(){};
 
-    void request(PonyTensor<DType> &MatrixA, PonyTensor<DType> &MatrixB, PonyTensor<DType> &Res);
+    void request(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res, std::vector<cl::Event> &Events);
 };
 
 #endif
