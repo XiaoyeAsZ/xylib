@@ -56,42 +56,37 @@ bool operator==(TensorOnHost<DType> &MA, TensorOnHost<DType> &MB)
   return 1;
 }
 
-// template <typename DType>
-// AttentionLayer::AttentionLayer();
+template <typename DType>
+AttentionHead::AttentionHead(){};
 
-// template <typename DType>
-// AttentionLayer::AttentionLayer(PonyTensor<DType> WQIn, PonyTensor<DType> WKIn, PonyTensor<DType> WVIn)
-// {
-//     this->WQ = WQIn;
-//     this->WK = WKIn;
-//     this->WV = WVIn;
-// };
+template <typename DType>
+AttentionHead::AttentionHead(TensorOnHost<DType> &WQIn, TensorOnHost<DType> &WKIn, TensorOnHost<DType> &WVIn)
+{
+  this->WQHost = WQIn;
+  this->WKHost = WKIn;
+  this->WVHost = WVIn;
+};
 
-// template <typename DType>
-// FFNLayer::FFNLayer(){
+template <typename DType>
+AttentionHead::~AttentionHead(){};
 
-// };
+template <typename DType>
+void AttentionHead::migrate(cl::Context Ctx, cl::CommandQueue Queue)
+{
+  cl_int err;
+  OCL_CHECK(err, this->WQFPGA = cl::Buffer(Ctx, CL_MEM_READ_ONLY, (EMBEDDING_DIM * EMBEDDING_DIM) * sizeof(DType), nullptr, &err));
+  OCL_CHECK(err, this->WKFPGA = cl::Buffer(Ctx, CL_MEM_READ_ONLY, (EMBEDDING_DIM * EMBEDDING_DIM) * sizeof(DType), nullptr, &err));
+  OCL_CHECK(err, this->WVFPGA = cl::Buffer(Ctx, CL_MEM_READ_ONLY, (EMBEDDING_DIM * EMBEDDING_DIM) * sizeof(DType), nullptr, &err));
+  OCL_CHECK(err, err = Queue.enqueueWriteBuffer(this->WQFPGA.Data, CL_FALSE, 0, (this->WQFPGA.Dim0 * this->WQFPGA.Dim1) * sizeof(DType), this->WQHost.Data, nullptr));
+  OCL_CHECK(err, err = Queue.enqueueWriteBuffer(this->WKFPGA.Data, CL_FALSE, 0, (this->WKFPGA.Dim0 * this->WKFPGA.Dim1) * sizeof(DType), this->WKHost.Data, nullptr));
+  OCL_CHECK(err, err = Queue.enqueueWriteBuffer(this->WVFPGA.Data, CL_FALSE, 0, (this->WVFPGA.Dim0 * this->WVFPGA.Dim1) * sizeof(DType), this->WVHost.Data, nullptr));
+  Queue.finish();
+};
 
-// template <typename DType>
-// FFNLayer::FFNLayer(TensorOnHost<DType> WIn)
-// {
-//     this->WOnHost = WIn;
-// }
+template <typename DType>
+TensorOnFPGA AttentionHead::operator()(TensorOnFPGA &Input, KrnlDispatch &Dispatch){
 
-// template <typename DType>
-// void FFNLayer::migrate(cl::Context &Ctx, cl::CommandQueue &Queue)
-// {
-//     cl_int err;
-//     OCL_CHECK(err, this->WOnFPGA = cl::Buffer(Ctx, CL_MEM_READ_ONLY, (this->WOnHost.Dim0 * this->WOnHost.Dim1) * sizeof(DType), nullptr, &err));
-//     OCL_CHECK(err, err = Queue.enqueueMigrateMemObjects({this->WOnFPGA}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
-//     Queue.finish();
-// }
-
-// template <typename DType>
-// void FFNLayer::forward(TensorOnFPGA TokenInput, KrnlDispatch<GemmRequest<DType>> &Dispatch)
-// {
-//     Dispatch.request(this->WOnFPGA, TokenInput)
-// }
+};
 
 template <typename DType>
 GemmRequest<DType>::GemmRequest(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue)
@@ -115,7 +110,7 @@ GemmRequest<DType>::GemmRequest(cl::Context &Ctx, cl::Program &Program, cl::Comm
 }
 
 template <typename DType>
-void GemmRequest<DType>::run(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res, std::vector<cl::Event> &Events)
+void GemmRequest<DType>::run(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res)
 {
   assert(MatrixA.Dim0 <= GEMM_MAX_MATRIX_M);
   assert(MatrixA.Dim1 <= GEMM_MAX_MATRIX_N);
@@ -140,8 +135,8 @@ void GemmRequest<DType>::run(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, Tenso
   // Events.push_back(ReadEventMatrixA);
   // Events.push_back(ReadEventMatrixB);
 
-  OCL_CHECK(err, err = this->Q.enqueueTask(Kernel, &Events, &RunEvent));
-  Events.push_back(RunEvent);
+  OCL_CHECK(err, err = this->Q.enqueueTask(this->Kernel, &this->Events, &RunEvent));
+  this->Events.push_back(RunEvent);
 
   // OCL_CHECK(err, err = q.enqueueReadBuffer(MatrixResBuf, CL_FALSE, 0, (MatrixA.Dim0 * MatrixB.Dim1) * sizeof(DType), Res.Data, &Events, &ResEvent));
   // Events.push_back(ResEvent);
@@ -168,9 +163,223 @@ GemmDispatch<DType>::GemmDispatch(cl::Context &Ctx, cl::Program &Program, cl::Co
 }
 
 template <typename DType>
-void GemmDispatch<DType>::request(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res, std::vector<cl::Event> &Events)
+void GemmDispatch<DType>::request(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res)
 {
-  this->Reqs[(this->Round++) % this->ReqNumMax].run(MatrixA, MatrixB, Res, Events);
+  this->Reqs[(this->Round++) % this->ReqNumMax].run(MatrixA, MatrixB, Res);
+}
+
+/**
+ * Class OCLWrap
+ *
+ */
+
+template <typename DType>
+cl::Buffer OCLWrap::AllocateReadBuffer(unsigned int Size)
+{
+  cl_int err;
+  cl::Buffer Buf;
+  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_READ_ONLY, (Size) * sizeof(DType), nullptr, &err));
+  return Buf;
+};
+
+template <typename DType>
+cl::Buffer OCLWrap::AllocateWriteBuffer(unsigned int Size)
+{
+  cl_int err;
+  cl::Buffer Buf;
+  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_WRITE_ONLY, (Size) * sizeof(DType), nullptr, &err));
+  return Buf;
+};
+
+template <typename DType>
+cl::Buffer OCLWrap::AllocateReadWriteBuffer(unsigned int Size)
+{
+  cl_int err;
+  cl::Buffer Buf;
+  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_READ_WRITE, (Size) * sizeof(DType), nullptr, &err));
+  OCL_CHECK(err, err = this->Queue.enqueueMigrateMemObjects({Buf}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
+  this->Queue.finish();
+  return Buf;
+};
+
+template <typename DType>
+TensorOnFPGA OCLWrap::Add(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events)
+{
+  assert(Tensor0.Dim0 == Tensor1.Dim0 && Tensor0.Dim1 == Tensor1.Dim1);
+
+  cl_int err;
+  cl::Event RunEvent;
+  TensorOnFPGA Buf = {this->AllocateReadWriteBuffer<DType>(Tensor0.Dim0 * Tensor0.Dim1), Tensor0.Dim0, Tensor0.Dim1};
+
+  if (Tensor0.Dim1 == 0)
+  {
+    this->KrnlAddVec.setArg(0, Tensor0.Dim0);
+    this->KrnlAddVec.setArg(1, Tensor0.Dim1);
+    this->KrnlAddVec.setArg(2, Tensor0.Data);
+    this->KrnlAddVec.setArg(3, Tensor1.Data);
+    this->KrnlAddVec.setArg(4, Buf.Data);
+    OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlAddVec, Events, &RunEvent));
+  }
+  else
+  {
+    this->KrnlAddMat.setArg(0, Tensor0.Dim0);
+    this->KrnlAddMat.setArg(1, Tensor0.Dim1);
+    this->KrnlAddMat.setArg(2, Tensor0.Data);
+    this->KrnlAddMat.setArg(3, Tensor1.Data);
+    this->KrnlAddMat.setArg(4, Buf.Data);
+    OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlAddMat, Events, &RunEvent));
+  }
+
+  Events.push_back(RunEvent);
+
+  return Buf;
+};
+
+template <typename DType>
+TensorOnFPGA OCLWrap::Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events)
+{
+  assert(Tensor0.Dim0 == Tensor1.Dim0 && Tensor0.Dim1 == Tensor1.Dim1);
+
+  cl_int err;
+  cl::Event RunEvent;
+  TensorOnFPGA Buf = {this->AllocateReadWriteBuffer<DType>(Tensor0.Dim0 * Tensor0.Dim1), Tensor0.Dim0, Tensor0.Dim1};
+
+  if (Tensor0.Dim1 == 0)
+  {
+    this->KrnlDotVec.setArg(0, Tensor0.Dim0);
+    this->KrnlDotVec.setArg(1, Tensor0.Dim1);
+    this->KrnlDotVec.setArg(2, Tensor0.Data);
+    this->KrnlDotVec.setArg(3, Tensor1.Data);
+    this->KrnlDotVec.setArg(4, Buf.Data);
+    OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlDotVec, Events, &RunEvent));
+  }
+  else
+  {
+    this->KrnlDotMat.setArg(0, Tensor0.Dim0);
+    this->KrnlDotMat.setArg(1, Tensor0.Dim1);
+    this->KrnlDotMat.setArg(2, Tensor0.Data);
+    this->KrnlDotMat.setArg(3, Tensor1.Data);
+    this->KrnlDotMat.setArg(4, Buf.Data);
+    OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlDotMat, Events, &RunEvent));
+  }
+
+  Events.push_back(RunEvent);
+
+  return Buf;
+};
+
+/**
+ * Class AttentionLayer
+ */
+
+template <typename DType>
+AttentionLayer::AttentionLayer()
+{
+}
+
+template <typename DType>
+AttentionLayer::~AttentionLayer()
+{
+}
+
+template <typename DType>
+TensorOnFPGA AttentionLayer::operator()(TensorOnFPGA Input)
+{
+  std::vector<TensorOnFPGA> Heads;
+
+  for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
+  {
+    TensorOnFPGA H0 = this->OCL.Mul(this->WQFPGA[IterHead].Data, Input);
+    TensorOnFPGA H1 = this->OCL.Mul(this->WKFPGA[IterHead].Data, Input);
+    TensorOnFPGA H2 = this->OCL.Mul(this->WVFPGA[IterHead].Data, Input);
+    this->OCL.REmb(H0, H1, this->OCL.Freq);
+
+    assert(this->KCache[IterHead].Dim0 + H1.Dim0 <= this->MaxCacheLen);
+    assert(this->VCache[IterHead].Dim0 + H2.Dim0 <= this->MaxCacheLen);
+    this->OCL.Append(this->KCache[IterHead], H1);
+    this->OCL.Append(this->KCache[IterHead], H2);
+
+    TensorOnFPGA H3 = this->OCL.Trans(H1);
+    TensorOnFPGA H4 = this->OCL.Mul(H0, H3);
+    TensorOnFPGA H5 = this->OCL.Softmax(H4);
+    TensorOnFPGA H6 = this->OCL.Mul(H5, H2);
+
+    H0.ReleaseMem();
+    H1.ReleaseMem();
+    H2.ReleaseMem();
+    H3.ReleaseMem();
+    H4.ReleaseMem();
+
+    Heads.push_back(H6);
+  }
+
+  this->CurLen += Input.Dim0;
+  
+}
+
+/**
+ * Class FeedForwardLayer
+ */
+
+template <typename DType>
+FeedForwardLayer::FeedForwardLayer()
+{
+}
+
+template <typename DType>
+FeedForwardLayer::~FeedForwardLayer()
+{
+}
+
+template <typename DType>
+TensorOnFPGA FeedForwardLayer::operator()(TensorOnFPGA Input)
+{
+  TensorOnFPGA H0 = this->OCL.Mul(this->W0FPGA, Input);
+  TensorOnFPGA H1 = this->OCL.Silu(H0);
+  TensorOnFPGA H2 = this->OCL.Mul(this->W2FPGA, Input);
+  TensorOnFPGA H3 = this->OCL.Dot(H0, H2);
+  TensorOnFPGA H4 = this->OCL.Mul(this->W1FPGA, H3);
+
+  H0.ReleaseMem();
+  H1.ReleaseMem();
+  H2.ReleaseMem();
+  H3.ReleaseMem();
+  H4.ReleaseMem();
+
+  return H4;
+}
+
+/**
+ * Class TransformerBlock
+ */
+
+template <typename DType>
+TransformerBlock::TransformerBlock()
+{
+}
+
+template <typename DType>
+TransformerBlock::~TransformerBlock()
+{
+}
+
+template <typename DType>
+TensorOnFPGA TransformerBlock::operator()(TensorOnFPGA Input)
+{
+  TensorOnFPGA H0 = this->NormAttn(Input);
+  TensorOnFPGA H1 = this->Attn(H0);
+  TensorOnFPGA H2 = this->OCL.Add(Input, H1);
+  TensorOnFPGA H3 = this->NormFFN(H2);
+  TensorOnFPGA H4 = this->FFN(H3);
+  TensorOnFPGA H5 = this->OCL.Add(H2, H4);
+
+  H0.ReleaseMem();
+  H1.ReleaseMem();
+  H2.ReleaseMem();
+  H3.ReleaseMem();
+  H4.ReleaseMem();
+
+  return H5;
 }
 
 int main(int argc, char **argv)
