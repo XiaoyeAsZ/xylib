@@ -14,11 +14,13 @@
 struct TensorOnFPGA
 {
     cl::Buffer Data;
+    unsigned int Offset;
     unsigned int Dim0;
     unsigned int Dim1;
 
     TensorOnFPGA()
     {
+        Offset = 0;
         Dim0 = 0;
         dim1 = 0;
     }
@@ -26,6 +28,11 @@ struct TensorOnFPGA
     void ReleaseMem()
     {
         clReleaseMemObject(Data);
+    }
+
+    TensorOnFPGA SubTensorRow(unsigned int Start, unsigned int Len)
+    {
+        return TensorOnFPGA{Data, Start, Len, Dim1};
     }
 };
 
@@ -62,25 +69,32 @@ public:
     cl::Buffer AllocateReadWriteBuffer(unsigned int Size);
 
     template <typename DType>
-    TensorOnFPGA Mul(TensorOnFPGA Tensor0, TensorOnFPGA Tensor1);
+    TensorOnFPGA Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
 
     template <typename DType>
-    TensorOnFPGA Add(TensorOnFPGA Tensor0, TensorOnFPGA Tensor1);
+    TensorOnFPGA Add(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
 
     template <typename DType>
-    TensorOnFPGA Dot(TensorOnFPGA Tensor0, TensorOnFPGA Tensor1);
+    TensorOnFPGA Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
 
     template <typename DType>
-    TensorOnFPGA Silu(TensorOnFPGA Tensor0);
+    TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
 
     TensorOnFPGA Freq;
-    void REmb(TensorOnFPGA Tensor0, TensorOnFPGA Tensor1, TensorOnFPGA Tensor2);
+    template <typename DType>
+    TensorOnHost REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
 
-    void Append(TensorOnFPGA Base, TensorOnFPGA Item);
+    template <typename DType>
+    void Move(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
 
-    TensorOnFPGA Trans(TensorOnFPGA Tensor0);
+    template <typename DType>
+    TensorOnFPGA Trans(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
 
-    TensorOnFPGA Softmax(TensorOnFPGA Tensor0);
+    template <typename DType>
+    TensorOnFPGA Softmax(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
+
+    template <typename DType>
+    TensorOnFPGA RMSNorm(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
 
 }
 
@@ -93,11 +107,11 @@ private:
     std::vector<TensorOnHost<DType>> WQHost;
     std::vector<TensorOnHost<DType>> WKHost;
     std::vector<TensorOnHost<DType>> WVHost;
-    std::vector<TensorOnHost<DType>> WOHost;
+    TensorOnHost<DType> WOHost;
     std::vector<TensorOnFPGA> WQFPGA;
     std::vector<TensorOnFPGA> WKFPGA;
     std::vector<TensorOnFPGA> WVFPGA;
-    std::vector<TensorOnFPGA> WOFPGA;
+    TensorOnFPGA WOFPGA;
     std::vector<TensorOnFPGA> KCache;
     std::vector<TensorOnFPGA> VCache;
 
@@ -107,6 +121,9 @@ private:
 public:
     AttentionLayer();
     ~AttentionLayer();
+
+    void load(std::ifstream &F);
+    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
 template <typename DType>
@@ -118,24 +135,30 @@ private:
     TensorOnHost<DType> W0Host;
     TensorOnHost<DType> W1Host;
     TensorOnHost<DType> W2Host;
-    std::vector<TensorOnFPGA> W0FPGA;
-    std::vector<TensorOnFPGA> W1FPGA;
-    std::vector<TensorOnFPGA> W2FPGA;
+    TensorOnFPGA W0FPGA;
+    TensorOnFPGA W1FPGA;
+    TensorOnFPGA W2FPGA;
 
 public:
     FeedForwardLayer();
     ~FeedForwardLayer();
 
-    TensorOnFPGA operator()(TensorOnFPGA Input);
+    void load(std::ifstream &F);
+    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
 template <typename DType>
 class RMSNormLayer
 {
 private:
+    TensorOnFPGA Ep;
+    TensorOnFPGA Weight;
+
 public:
     RMSNormLayer();
     ~RMSNormLayer();
+
+    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
 template <typename DType>
@@ -153,76 +176,22 @@ public:
     TransformerBlock();
     ~TransformerBlock();
 
-    TensorOnFPGA operator()(TensorOnFPGA Input);
-};
-
-// template <typename DType>
-// class FFNLayer
-// {
-// private:
-//     TensorOnHost<DType> WOnHost;
-//     cl::Buffer WOnFpga;
-//     cl::Buffer ResOnFPGA;
-
-// public:
-//     FFNLayer();
-//     FFNLayer(TensorOnHost<DType> WIn);
-//     ~FFNLayer();
-
-//     cl::Buffer migrate(cl::Context &Ctx, cl::CommandQueue &Queue);
-//     TensorOnFPGA forward(TensorOnFPGA TokenInput);
-// };
-
-// template <typename DType>
-// class GemvRequest
-// {
-// private:
-//     /* data */
-// public:
-//     GemvRequest(/* args */);
-//     ~GemvRequest();
-
-//     void run();
-// };
-
-template <typename DType>
-class GemmRequest
-{
-private:
-    cl::Kernel Kernel;
-    cl::CommandQueue Q;
-    std::vector<cl::Event> Events;
-    cl::Buffer MatrixABuf;
-    cl::Buffer MatrixBBuf;
-    cl::Buffer MatrixResBuf;
-
-public:
-    GemmRequest(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue);
-    ~GemmRequest(){};
-
-    void run(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res);
-    void finish();
-};
-
-class KrnlDispatch
-{
-public:
-    virtual void request() = 0;
+    void load(std::ifstream &F);
+    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
 template <typename DType>
-class GemmDispatch : public KrnlDispatch
+class Transformer
 {
 private:
-    std::vector<GemmRequest<DType>> Reqs;
-    unsigned int ReqNumMax = 1;
-    unsigned int Round = 0;
+    OCLWrap &OCL;
+
+    std::vector<TransformerBlock<DType>> Blocks;
 
 public:
-    GemmDispatch(cl::Context &Ctx, cl::Program &Program, cl::CommandQueue &Queue, unsigned int MaxReq);
-    ~GemmDispatch(){};
+    Transformer();
+    ~Transformer();
 
-    void request(TensorOnFPGA &MatrixA, TensorOnFPGA &MatrixB, TensorOnFPGA &Res);
+    void load(std::ifstream &F);
+    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
-
-#endif
