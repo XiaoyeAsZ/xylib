@@ -3,11 +3,16 @@
 
 #define LAYER_NUM 32
 #define HEAD_NUM 32
-#define EMBEDDING_DIM 64
+#define EMBEDDING_DIM 4096
+#define HEAD_DIM 126
+#define HIDDEN_DIM 11008
 #define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
 #define GEMM_MAX_MATRIX_K 4096
+
+#define RANDOM_INPUT
+#define DEBUG
 
 #include <vector>
 
@@ -22,17 +27,25 @@ struct TensorOnFPGA
     {
         Offset = 0;
         Dim0 = 0;
-        dim1 = 0;
+        Dim1 = 0;
     }
 
-    void ReleaseMem()
+    TensorOnFPGA(cl::Buffer Data, unsigned int Offset, unsigned int Dim0, unsigned int Dim1)
     {
-        clReleaseMemObject(Data);
+        this->Data = Data;
+        this->Offset = Offset;
+        this->Dim0 = Dim0;
+        this->Dim1 = Dim1;
     }
+
+    // void ReleaseMem()
+    // {
+    //     clReleaseMemObject(Data);
+    // }
 
     TensorOnFPGA SubTensorRow(unsigned int Start, unsigned int Len)
     {
-        return TensorOnFPGA{Data, Start, Len, Dim1};
+        return TensorOnFPGA(Data, Start, Len, Dim1);
     }
 };
 
@@ -46,7 +59,14 @@ struct TensorOnHost
     TensorOnHost()
     {
         Dim0 = 0;
-        dim1 = 0;
+        Dim1 = 0;
+    }
+
+    TensorOnHost(DType *Data, unsigned int Dim0, unsigned int Dim1)
+    {
+        this->Data = Data;
+        this->Dim0 = Dim0;
+        this->Dim1 = Dim1;
     }
 };
 
@@ -54,11 +74,25 @@ class OCLWrap
 {
 private:
     cl::Context Ctx;
+    cl::Program Prog;
     cl::CommandQueue Queue;
 
-    cl::Kernel KrnlAdd;
+    cl::Kernel KrnlGemm;
+    cl::Kernel KrnlAddVec;
+    cl::Kernel KrnlAddMat;
+    cl::Kernel KrnlDotVec;
+    cl::Kernel KrnlDotMat;
+    cl::Kernel KrnlSilu;
+    cl::Kernel KrnlREmb;
+    cl::Kernel KrnlMove;
+    cl::Kernel KrnlTranspose;
+    cl::Kernel KrnlSoftmax;
+    cl::Kernel KrnlRMSNorm;
 
 public:
+    OCLWrap(cl::Context &Ctx, cl::Program Prog, cl::CommandQueue &Queue);
+    ~OCLWrap();
+
     template <typename DType>
     cl::Buffer AllocateReadBuffer(unsigned int Size);
 
@@ -67,6 +101,9 @@ public:
 
     template <typename DType>
     cl::Buffer AllocateReadWriteBuffer(unsigned int Size);
+
+    template <typename DType>
+    void Map(TensorOnHost<DType> &Host, TensorOnFPGA &Device);
 
     template <typename DType>
     TensorOnFPGA Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
@@ -82,7 +119,7 @@ public:
 
     TensorOnFPGA Freq;
     template <typename DType>
-    TensorOnHost REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
+    TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
 
     template <typename DType>
     void Move(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
@@ -95,8 +132,7 @@ public:
 
     template <typename DType>
     TensorOnFPGA RMSNorm(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
-
-}
+};
 
 template <typename DType>
 class AttentionLayer
@@ -104,10 +140,11 @@ class AttentionLayer
 private:
     OCLWrap &OCL;
 
-    std::vector<TensorOnHost<DType>> WQHost;
-    std::vector<TensorOnHost<DType>> WKHost;
-    std::vector<TensorOnHost<DType>> WVHost;
-    TensorOnHost<DType> WOHost;
+    std::vector<TensorOnHost<DType>> WQHost; // 32 * 4096 * 128
+    std::vector<TensorOnHost<DType>> WKHost; // 32 * 4096 * 128
+    std::vector<TensorOnHost<DType>> WVHost; // 32 * 4096 * 128
+    TensorOnHost<DType> WOHost;              //  4096 * 4096
+
     std::vector<TensorOnFPGA> WQFPGA;
     std::vector<TensorOnFPGA> WKFPGA;
     std::vector<TensorOnFPGA> WVFPGA;
@@ -119,10 +156,11 @@ private:
     unsigned int CurLen = 0;
 
 public:
-    AttentionLayer();
+    AttentionLayer(OCLWrap &OCL);
     ~AttentionLayer();
 
     void load(std::ifstream &F);
+    void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
@@ -132,18 +170,20 @@ class FeedForwardLayer
 private:
     OCLWrap &OCL;
 
-    TensorOnHost<DType> W0Host;
-    TensorOnHost<DType> W1Host;
-    TensorOnHost<DType> W2Host;
+    TensorOnHost<DType> W0Host; // 4096 * 11008
+    TensorOnHost<DType> W1Host; // 11008 * 4096
+    TensorOnHost<DType> W2Host; // 4096 * 11008
+
     TensorOnFPGA W0FPGA;
     TensorOnFPGA W1FPGA;
     TensorOnFPGA W2FPGA;
 
 public:
-    FeedForwardLayer();
+    FeedForwardLayer(OCLWrap &OCL);
     ~FeedForwardLayer();
 
     void load(std::ifstream &F);
+    void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
@@ -151,13 +191,17 @@ template <typename DType>
 class RMSNormLayer
 {
 private:
+    OCLWrap &OCL;
+
     TensorOnFPGA Ep;
     TensorOnFPGA Weight;
 
 public:
-    RMSNormLayer();
+    RMSNormLayer(OCLWrap &OCL);
     ~RMSNormLayer();
 
+    void load(std::ifstream &F);
+    void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
@@ -173,10 +217,11 @@ private:
     RMSNormLayer<DType> NormFFN;
 
 public:
-    TransformerBlock();
+    TransformerBlock(OCLWrap &OCL);
     ~TransformerBlock();
 
     void load(std::ifstream &F);
+    void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
 
@@ -189,9 +234,12 @@ private:
     std::vector<TransformerBlock<DType>> Blocks;
 
 public:
-    Transformer();
+    Transformer(OCLWrap &OCL);
     ~Transformer();
 
     void load(std::ifstream &F);
+    void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
+
+#endif
