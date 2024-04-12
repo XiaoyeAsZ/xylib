@@ -34,12 +34,12 @@ void ReadFromMem(
                 {
                     A[IterEntry] = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
                 }
-                std::cout << "read A(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
+                // std::cout << "read A(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
                 MatrixA.write(A);
 
                 WideType<DATA_TYPE, DATA_PACK_NUM> B;
                 B = *(WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixBInMem[INDEX_FROM_2D(IterCol, IterBlockN * DATA_PACK_NUM, DimK)]);
-                std::cout << "read B(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
+                // std::cout << "read B(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
                 MatrixB.write(B);
             }
 

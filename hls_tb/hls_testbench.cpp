@@ -2,16 +2,17 @@
 #include <vector>
 // #include "krnl_gemv.h"
 // #include "krnl_gemm.h"
-#include "krnl_transpose.h"
+#include "krnl_dotmat.h"
 #include "ap_int.h"
 #include <random>
+#include <cmath>
 
 #define MATRIX_SIZE 16
 
-auto matrixA = new ap_int<32>[MATRIX_SIZE * MATRIX_SIZE];
-auto matrixB = new ap_int<32>[MATRIX_SIZE * MATRIX_SIZE];
-auto res = new ap_int<32>[MATRIX_SIZE * MATRIX_SIZE];
-auto ref = new ap_int<32>[MATRIX_SIZE * MATRIX_SIZE];
+auto matrixA = new float[MATRIX_SIZE * MATRIX_SIZE];
+auto matrixB = new float[MATRIX_SIZE * MATRIX_SIZE];
+auto res = new float[MATRIX_SIZE * MATRIX_SIZE];
+auto ref = new float[MATRIX_SIZE * MATRIX_SIZE];
 
 int main()
 {
@@ -19,7 +20,8 @@ int main()
     {
         for (int j = 0; j < MATRIX_SIZE; j++)
         {
-            matrixA[i * MATRIX_SIZE + j] = i - j;
+            matrixA[i * MATRIX_SIZE + j] = float(rand()) / RAND_MAX;
+            matrixB[i * MATRIX_SIZE + j] = float(rand()) / RAND_MAX;
             // matrixB[i * MATRIX_SIZE + j] = rand();
         }
     }
@@ -28,10 +30,7 @@ int main()
     {
         for (int j = 0; j < MATRIX_SIZE; j++)
         {
-            ap_int<32> tmp = 0;
-            for (int k = 0; k < MATRIX_SIZE; k++)
-                tmp += matrixA[i * MATRIX_SIZE + k] * matrixB[k * MATRIX_SIZE + j];
-            ref[i * MATRIX_SIZE + j] = tmp;
+            ref[i * MATRIX_SIZE + j] = matrixA[i * MATRIX_SIZE + j] * matrixB[i * MATRIX_SIZE + j];
         }
     }
 
@@ -62,19 +61,18 @@ int main()
     //     std::cout << std::endl;
     // }
 
-    KrnlTranspose(MATRIX_SIZE, MATRIX_SIZE, matrixA, matrixB);
+    KrnlDotMat(matrixA, 0, matrixB, 0, MATRIX_SIZE, MATRIX_SIZE, res, 0);
 
     bool flag = 1;
     for (int i = 0; i < MATRIX_SIZE; i++)
     {
         for (int j = 0; j < MATRIX_SIZE; j++)
         {
-            std::cout << matrixB[i * MATRIX_SIZE + j] << " ";
-
-            if (matrixA[i * MATRIX_SIZE + j] != matrixB[j * MATRIX_SIZE + i])
+            std::cout << ref[i * MATRIX_SIZE + j] << " : " << res[i * MATRIX_SIZE + j] << std::endl;
+            if (abs(ref[i * MATRIX_SIZE + j] - res[i * MATRIX_SIZE + j]) > 1e-7)
             {
                 flag = 0;
-                std::cout << matrixA[i * MATRIX_SIZE + j] << " : " << matrixB[j * MATRIX_SIZE + i] << std::endl;
+                // std::cout << ref[i * MATRIX_SIZE + j] << " : " << matrixB[j * MATRIX_SIZE + i] << std::endl;
             }
         }
         std::cout << std::endl;

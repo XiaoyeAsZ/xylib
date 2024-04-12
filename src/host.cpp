@@ -20,8 +20,8 @@ template <typename DType>
 DType *GenerateRandomInput(unsigned int Len)
 {
   DType *GeneratedInput = new DType[Len];
-  // for (unsigned int IterRnd = 0; IterRnd < Len; IterRnd++)
-  //   GeneratedInput[IterRnd] = DType(rand());
+  for (unsigned int IterRnd = 0; IterRnd < Len; IterRnd++)
+    GeneratedInput[IterRnd] = DType(float(rand()) / RAND_MAX);
   return GeneratedInput;
 }
 
@@ -69,8 +69,9 @@ OCLWrap::OCLWrap(cl::Context &Ctx, cl::Program Prog, cl::CommandQueue &Queue)
   this->Prog = Prog;
   this->Queue = Queue;
 
-  OCL_CHECK(err, this->KrnlGemm = cl::Kernel(this->Prog,"KrnlGemm", &err));
-  OCL_CHECK(err, this->KrnlAddMat = cl::Kernel(this->Prog,"KrnlAddMat", &err));
+  OCL_CHECK(err, this->KrnlGemm = cl::Kernel(this->Prog, "KrnlGemm", &err));
+  OCL_CHECK(err, this->KrnlDotMat = cl::Kernel(this->Prog, "KrnlDotMat", &err));
+  OCL_CHECK(err, this->KrnlSilu = cl::Kernel(this->Prog, "KrnlSilu", &err));
 };
 
 OCLWrap::~OCLWrap(){};
@@ -195,11 +196,14 @@ TensorOnFPGA OCLWrap::Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vec
   }
   else
   {
-    this->KrnlDotMat.setArg(0, Tensor0.Dim0);
-    this->KrnlDotMat.setArg(1, Tensor0.Dim1);
-    this->KrnlDotMat.setArg(2, Tensor0.Data);
-    this->KrnlDotMat.setArg(3, Tensor1.Data);
-    this->KrnlDotMat.setArg(4, Buf.Data);
+    this->KrnlDotMat.setArg(0, Tensor0.Data);
+    this->KrnlDotMat.setArg(1, Tensor0.Offset);
+    this->KrnlDotMat.setArg(2, Tensor1.Data);
+    this->KrnlDotMat.setArg(3, Tensor1.Offset);
+    this->KrnlDotMat.setArg(4, Tensor0.Dim0);
+    this->KrnlDotMat.setArg(5, Tensor0.Dim1);
+    this->KrnlDotMat.setArg(6, Buf.Data);
+    this->KrnlDotMat.setArg(7, Buf.Offset);
     OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlDotMat, &Events, &RunEvent));
   }
 
@@ -215,10 +219,12 @@ TensorOnFPGA OCLWrap::Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events
   cl::Event RunEvent;
   TensorOnFPGA Buf(this->AllocateReadWriteBuffer<DType>(Tensor0.Dim0 * Tensor0.Dim1), 0, Tensor0.Dim0, Tensor0.Dim1);
 
-  this->KrnlSilu.setArg(0, Tensor0.Dim0);
-  this->KrnlSilu.setArg(1, Tensor0.Dim1);
-  this->KrnlSilu.setArg(2, Tensor0.Data);
-  this->KrnlSilu.setArg(3, Buf.Data);
+  this->KrnlSilu.setArg(0, Tensor0.Data);
+  this->KrnlSilu.setArg(1, Tensor0.Offset);
+  this->KrnlSilu.setArg(2, Tensor0.Dim0);
+  this->KrnlSilu.setArg(3, Tensor0.Dim1);
+  this->KrnlSilu.setArg(4, Buf.Data);
+  this->KrnlSilu.setArg(5, Buf.Offset);
   OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlSilu, &Events, &RunEvent));
 
   Events.push_back(RunEvent);
@@ -712,14 +718,14 @@ int main(int argc, char **argv)
   // Llama.load(Ws);
 
   OCLWrap OCL(context, program, queue);
-  FeedForwardLayer<short> ffn(OCL);
+  FeedForwardLayer<float> ffn(OCL);
   std::ifstream Ws("/home/chi/llama_fpga/weigths.dat", std::ios::binary | std::ios::in);
   ffn.load(Ws);
   ffn.migrate();
 
-  TensorOnHost<short> Input(GenerateRandomInput<short>(16 * 4096), 16, 4096);
+  TensorOnHost<float> Input(GenerateRandomInput<float>(16 * 128), 16, 128);
   TensorOnFPGA _Input;
-  _Input.Data = OCL.AllocateReadBuffer<short>(16 * 4096);
+  _Input.Data = OCL.AllocateReadBuffer<float>(16 * 128);
   _Input.Dim0 = Input.Dim0;
   _Input.Dim1 = Input.Dim1;
   OCL.Map(Input, _Input);

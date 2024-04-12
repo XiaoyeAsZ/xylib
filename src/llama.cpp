@@ -17,10 +17,10 @@ using namespace sda;
 using namespace sda::utils;
 
 template <typename DType>
-DType *GenerateRandomInput(unsigned int InputTokenLen = 16)
+DType *GenerateRandomInput(unsigned int Len)
 {
-  DType *GeneratedInput = new DType[InputTokenLen * EMBEDDING_DIM];
-  for (unsigned int IterRnd = 0; IterRnd < InputTokenLen * EMBEDDING_DIM; IterRnd++)
+  DType *GeneratedInput = new DType[Len];
+  for (unsigned int IterRnd = 0; IterRnd < Len; IterRnd++)
     GeneratedInput[IterRnd] = DType(rand());
   return GeneratedInput;
 }
@@ -306,10 +306,67 @@ TensorOnFPGA OCLWrap::RMSNorm(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Eve
  */
 
 template <typename DType>
-AttentionLayer::AttentionLayer() {}
+AttentionLayer::AttentionLayer()
+{
+  for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
+  {
+    this->WQHost.push_back({nullptr, EMBEDDING_DIM, HEAD_DIM});
+    this->WKHost.push_back({nullptr, EMBEDDING_DIM, HEAD_DIM});
+    this->WVHost.push_back({nullptr, EMBEDDING_DIM, HEAD_DIM});
+  }
+  this->WOHost = {nullptr, EMBEDDING_DIM, EMBEDDING_DIM};
+}
 
 template <typename DType>
 AttentionLayer::~AttentionLayer() {}
+
+template <typename DType>
+void AttentionLayer::load(std::ifstream &F)
+{
+
+#ifdef RANDOM_INPUT
+  for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
+  {
+    for (unsigned int IterRead = 0; IterRead < this->WQHost[IterHead].Dim0 * this->WQHost[IterHead].Dim1; IterRead++)
+      this->WQHost[IterHead].Data = GenerateRandomInput(this->WQHost[IterHead].Dim0 * this->WQHost[IterHead].Dim1);
+
+    for (unsigned int IterRead = 0; IterRead < this->WKHost[IterHead].Dim0 * this->WKHost[IterHead].Dim1; IterRead++)
+      this->WKHost[IterHead].Data = GenerateRandomInput(this->WKHost[IterHead].Dim0 * this->WKHost[IterHead].Dim1);
+
+    for (unsigned int IterRead = 0; IterRead < this->WVHost[IterHead].Dim0 * this->WVHost[IterHead].Dim1; IterRead++)
+      this->WVHost[IterHead].Data = GenerateRandomInput(this->WVHost[IterHead].Dim0 * this->WVHost[IterHead].Dim1);
+  }
+  this->WOHost.Data = GenerateRandomInput(this->WOHost.Dim0 * this->WOHost.Dim1);
+#else
+
+  this->WQHost[IterHead].Data = new DType[this->WQHost[IterHead].Dim0 * this->WQHost[IterHead].Dim1];
+  for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
+  {
+
+    for (unsigned int IterRead = 0; IterRead < this->WQHost[IterHead].Dim0 * this->WQHost[IterHead].Dim1; IterRead++)
+      F >> this->WQHost[IterHead].Data[IterRead];
+  }
+
+  this->WKHost[IterHead].Data = new DType[this->WKHost[IterHead].Dim0 * this->WKHost[IterHead].Dim1];
+  for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
+  {
+    for (unsigned int IterRead = 0; IterRead < this->WKHost[IterHead].Dim0 * this->WKHost[IterHead].Dim1; IterRead++)
+      F >> this->WKHost[IterHead].Data[IterRead];
+  }
+
+  this->WVHost[IterHead].Data = new DType[this->WVHost[IterHead].Dim0 * this->WVHost[IterHead].Dim1];
+  for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
+  {
+    for (unsigned int IterRead = 0; IterRead < this->WVHost[IterHead].Dim0 * this->WVHost[IterHead].Dim1; IterRead++)
+      F >> this->WVHost[IterHead].Data[IterRead];
+  }
+
+  this->WOHost.Data = new DType[this->WOHost.Dim0 * this->WOHost.Dim1];
+  for (unsigned int IterRead = 0; IterRead < this->WOHost.Dim0 * this->WOHost.Dim1; IterRead++)
+    F >> this->WOHost.Data[IterRead];
+
+#endif
+}
 
 template <typename DType>
 TensorOnFPGA AttentionLayer::operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events)
@@ -373,14 +430,36 @@ TensorOnFPGA AttentionLayer::operator()(TensorOnFPGA Input, std::vector<cl::Even
  */
 
 template <typename DType>
-FeedForwardLayer::FeedForwardLayer() {}
+FeedForwardLayer::FeedForwardLayer()
+{
+  this->W0Host = {nullptr, EMBEDDING_DIM, HIDDEN_DIM};
+  this->W1Host = {nullptr, HIDDEN_DIM, EMBEDDING_DIM};
+  this->W2Host = {nullptr, EMBEDDING_DIM, HIDDEN_DIM};
+}
 
 template <typename DType>
 FeedForwardLayer::~FeedForwardLayer() {}
 
 template <typename DType>
-void FeedForwardLayer::load(std::ifstream &F){
-  
+void FeedForwardLayer::load(std::ifstream &F)
+{
+#ifdef RANDOM_INPUT
+  this->W0Host.Data = GenerateRandomInput(this->W0Host.Dim0, this->W0Host.Dim1);
+  this->W1Host.Data = GenerateRandomInput(this->W1Host.Dim0, this->W1Host.Dim1);
+  this->W2Host.Data = GenerateRandomInput(this->W2Host.Dim0, this->W2Host.Dim1);
+#else
+  this->W0Host.Data = new DType[this->W0Host.Dim0 * this->W0Host.Dim1];
+  for (unsigned int IterRead = 0; IterRead < this->W0Host.Dim0 * this->W0Host.Dim1; IterRead++)
+    F >> this->W0Host.Data[IterRead];
+
+  this->W1Host.Data = new DType[this->W1Host.Dim0 * this->W1Host.Dim1];
+  for (unsigned int IterRead = 0; IterRead < this->W1Host.Dim0 * this->W1Host.Dim1; IterRead++)
+    F >> this->W1Host.Data[IterRead];
+
+  this->W2Host.Data = new DType[this->W2Host.Dim0 * this->W2Host.Dim1];
+  for (unsigned int IterRead = 0; IterRead < this->W2Host.Dim0 * this->W2Host.Dim1; IterRead++)
+    F >> this->W2Host.Data[IterRead];
+#endif
 }
 
 template <typename DType>
@@ -392,12 +471,12 @@ TensorOnFPGA FeedForwardLayer::operator()(TensorOnFPGA Input, std::vector<cl::Ev
   TensorOnFPGA H3 = this->OCL.Dot(H0, H2, Events);
   TensorOnFPGA H4 = this->OCL.Mul(this->W1FPGA, H3, Events);
 
-  Events.back().wait();
-  H0.ReleaseMem();
-  H1.ReleaseMem();
-  H2.ReleaseMem();
-  H3.ReleaseMem();
-  H4.ReleaseMem();
+  // Events.back().wait();
+  // H0.ReleaseMem();
+  // H1.ReleaseMem();
+  // H2.ReleaseMem();
+  // H3.ReleaseMem();
+  // H4.ReleaseMem();
 
   return H4;
 }
@@ -411,6 +490,9 @@ RMSNormLayer::RMSNormLayer() {}
 
 template <typename DType>
 RMSNormLayer::~RMSNormLayer() {}
+
+template <typename DType>
+void RMSNormLayer::load(std::ifstream &F) {}
 
 template <typename DType>
 TensorOnFPGA RMSNormLayer::operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events)
@@ -447,12 +529,12 @@ TensorOnFPGA TransformerBlock::operator()(TensorOnFPGA Input, std::vector<cl::Ev
   TensorOnFPGA H4 = this->FFN(H3, Events);
   TensorOnFPGA H5 = this->OCL.Add(H2, H4, Events);
 
-  Events.back().wait();
-  H0.ReleaseMem();
-  H1.ReleaseMem();
-  H2.ReleaseMem();
-  H3.ReleaseMem();
-  H4.ReleaseMem();
+  // Events.back().wait();
+  // H0.ReleaseMem();
+  // H1.ReleaseMem();
+  // H2.ReleaseMem();
+  // H3.ReleaseMem();
+  // H4.ReleaseMem();
 
   return H5;
 }
@@ -482,8 +564,10 @@ TensorOnFPGA Transformer::operator()(TensorOnFPGA Input, std::vector<cl::Event> 
   for (unsigned int IterBlock = 0; IterBlock < LAYER_NUM; IterBlock++)
   {
     TensorOnFPGA H = this->Blocks[IterBlock](X, Events);
-    Events.back().wait();
-    X.ReleaseMem();
+
+    // Events.back().wait();
+    // X.ReleaseMem();
+
     X = H;
   }
   return X;
@@ -520,5 +604,7 @@ int main(int argc, char **argv)
   std::ifstream Ws("/home/chi/llama_fpga/weigths.dat", std::ios::binary | std::ios::in);
   Llama.load(Ws);
 
-  std::cout << ((Res == ResHost) ? "PASS!!!" : "ERROR!!!") << std::endl;
+  
+
+  // std::cout << ((Res == ResHost) ? "PASS!!!" : "ERROR!!!") << std::endl;
 }

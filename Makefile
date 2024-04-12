@@ -59,8 +59,8 @@ HOST_SRC_HEADERS += $(HEAD_REPO)/*.hpp
 ############## Kernel Source Files  Dependencies
 # KERNEL_SRC_CPP = $(shell find . -type f -wholename '$(KERNEL_REPO)/krnl_*.cpp')
 # KERNEL_SRC_HEADERS = $(shell find . -type f -wholename '$(HEAD_REPO)/krnl_*.h')
-KERNEL_SRC_CPP := $(KERNEL_REPO)/krnl_gemm.cpp
-KERNEL_SRC_HEADERS := $(HEAD_REPO)/krnl_gemm.h
+KERNEL_SRC_CPP := $(KERNEL_REPO)/krnl_gemv.cpp 
+KERNEL_SRC_HEADERS := $(HEAD_REPO)/krnl_gemv.h
 KERNEL_INCLUDES := -I$(HEAD_REPO)
 
 ############## Check the version of gcc avaiable and select
@@ -112,14 +112,45 @@ $(BUILD_DIR)/$(HOST_EXE): $(HOST_SRC_CPP) $(HOST_SRC_HEADERS)
 
 ############## Kernel XO and Xclbin File Generation
 #Compile Kernel 
-$(BUILD_DIR)/$(XO_NAME).xo: $(KERNEL_SRC_CPP) $(KERNEL_SRC_HEADERS)
+
+$(BUILD_DIR)/krnl_gemm.xo: 
 	mkdir -p $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
 	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
-	v++ $(VPPFLAGS) -c -k KrnlGemm  $(KERNEL_INCLUDES) $(KERNEL_SRC_CPP) -o $@
+	v++ $(VPPFLAGS) -c -k KrnlGemm $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_gemm.cpp -o $@
+
+$(BUILD_DIR)/krnl_gemv.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlGemv $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_gemv.cpp -o $@
+
+$(BUILD_DIR)/krnl_dotmat.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlDotMat $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_dotmat.cpp -o $@
+
+$(BUILD_DIR)/krnl_silu.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlSilu $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_silu.cpp -o $@
+
+# $(BUILD_DIR)/$(XO_NAME).xo: $(KERNEL_SRC_CPP) $(KERNEL_SRC_HEADERS)
+# 	mkdir -p $(BUILD_DIR)
+# 	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+# 	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+# 	v++ $(VPPFLAGS) -c -k KrnlGemv   $(KERNEL_INCLUDES) $(KERNEL_SRC_CPP) -o $@
+
+
+
 # Link Kernel
-$(BUILD_DIR)/$(XCLBIN): $(BUILD_DIR)/$(XO_NAME).xo
-	v++ $(VPPFLAGS) -l -o $@ $(BUILD_DIR)/$(XO_NAME).xo
+XO_LIST := $(BUILD_DIR)/krnl_gemm.xo $(BUILD_DIR)/krnl_gemv.xo $(BUILD_DIR)/krnl_dotmat.xo $(BUILD_DIR)/krnl_silu.xo
+$(BUILD_DIR)/$(XCLBIN): $(XO_LIST)
+	v++ $(VPPFLAGS) -l -o $@ $(XO_LIST)
+
+
 
 ############## Emulation Files Generation
 EMCONFIG_FILE = emconfig.json

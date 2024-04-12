@@ -6,7 +6,7 @@
 
 using namespace blas;
 
-#define DATA_TYPE ap_int<32>
+#define DATA_TYPE float
 #define DATA_WIDTH 32
 #define RES_TYPE ap_int<32>
 #define RES_WIDTH 32
