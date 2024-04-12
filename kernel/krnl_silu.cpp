@@ -26,7 +26,7 @@ extern "C"
                 Res[IterUnroll] = Input[IterUnroll] * (1.0 / (1.0 + hls::exp(-Input[IterUnroll])));
                 //std::cout << "source: " << Input[IterUnroll] << " after: " << Res[IterUnroll] << " ";
             }
-            std::cout << std::endl;
+            // std::cout << std::endl;
             ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + IterRound * DATA_PACK_NUM]))[0] = Res;
         }
     }

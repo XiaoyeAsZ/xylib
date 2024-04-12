@@ -33,6 +33,7 @@ void ReadFromMem(
                 for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
                 {
                     A[IterEntry] = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
+        
                 }
                 // std::cout << "read A(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
                 MatrixA.write(A);

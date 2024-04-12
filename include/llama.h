@@ -3,9 +3,9 @@
 
 #define LAYER_NUM 32
 #define HEAD_NUM 32
-#define EMBEDDING_DIM 128
+#define EMBEDDING_DIM 16
 #define HEAD_DIM 128
-#define HIDDEN_DIM 128
+#define HIDDEN_DIM 64
 #define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
@@ -106,32 +106,35 @@ public:
     void Map(TensorOnHost<DType> &Host, TensorOnFPGA &Device);
 
     template <typename DType>
-    TensorOnFPGA Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
+    void Map(TensorOnFPGA &Device, TensorOnHost<DType> &Host);
 
     template <typename DType>
-    TensorOnFPGA Add(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
+    TensorOnFPGA Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    TensorOnFPGA Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
+    TensorOnFPGA Add(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
+    TensorOnFPGA Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+
+    template <typename DType>
+    TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     TensorOnFPGA Freq;
     template <typename DType>
-    TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
+    TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    void Move(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events);
+    void Move(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    TensorOnFPGA Trans(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
+    TensorOnFPGA Trans(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    TensorOnFPGA Softmax(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
+    TensorOnFPGA Softmax(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    TensorOnFPGA RMSNorm(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events);
+    TensorOnFPGA RMSNorm(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 };
 
 template <typename DType>
