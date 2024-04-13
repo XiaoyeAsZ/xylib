@@ -1,5 +1,5 @@
-#ifndef __KRNL_SILU__
-#define __KRNL_SILU__
+#ifndef __KRNL_DOTMAT__
+#define __KRNL_DOTMAT__
 
 #include "hls_stream.h"
 #include "types.hpp"

@@ -2,14 +2,16 @@
 #define __LLAMA__
 
 #define LAYER_NUM 32
-#define HEAD_NUM 32
-#define EMBEDDING_DIM 16
-#define HEAD_DIM 128
+#define HEAD_NUM 1
+#define EMBEDDING_DIM 256
+#define HEAD_DIM 8
 #define HIDDEN_DIM 64
 #define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
 #define GEMM_MAX_MATRIX_K 4096
+
+#define MAX_TOKEN_LEN 16
 
 #define RANDOM_INPUT
 #define DEBUG
