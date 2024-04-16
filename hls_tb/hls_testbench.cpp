@@ -2,7 +2,7 @@
 #include <vector>
 // #include "krnl_gemv.h"
 // #include "krnl_gemm.h"
-#include "krnl_remb.h"
+#include "krnl_addmat.h"
 #include "ap_int.h"
 #include <random>
 #include <cmath>
@@ -22,16 +22,17 @@ int main()
         {
             matrixA[i * MATRIX_SIZE + j] = float(rand()) / RAND_MAX;
             matrixB[i * MATRIX_SIZE + j] = float(rand()) / RAND_MAX;
+            // ref[i * MATRIX_SIZE + j] = matrixA[i * MATRIX_SIZE + j];
+            // matrixB[i * MATRIX_SIZE + j] = float(rand()) / RAND_MAX;
             // matrixB[i * MATRIX_SIZE + j] = rand();
         }
     }
 
     for (int i = 0; i < MATRIX_SIZE; i++)
     {
-        for (int j = 0; j < MATRIX_SIZE; j += 2)
+        for (int j = 0; j < MATRIX_SIZE; j++)
         {
-            ref[i * MATRIX_SIZE + j] = matrixA[i * MATRIX_SIZE + j] * matrixB[i * MATRIX_SIZE + j] - matrixA[i * MATRIX_SIZE + j + 1] * matrixB[i * MATRIX_SIZE + j + 1];
-            ref[i * MATRIX_SIZE + j + 1] = matrixA[i * MATRIX_SIZE + j] * matrixB[i * MATRIX_SIZE + j + 1] + matrixA[i * MATRIX_SIZE + j + 1] * matrixB[i * MATRIX_SIZE + j];
+            ref[i * MATRIX_SIZE + j] = matrixA[i * MATRIX_SIZE + j] + matrixB[i * MATRIX_SIZE + j];
         }
     }
 
@@ -62,7 +63,17 @@ int main()
     //     std::cout << std::endl;
     // }
 
-    KrnlREmb(matrixA, 0, MATRIX_SIZE, MATRIX_SIZE, matrixB, 0, res, 0);
+    // for (int i = 0; i < MATRIX_SIZE; i++)
+    // {
+    //     for (int j = 0; j < MATRIX_SIZE; j++)
+    //     {
+    //         std::cout << matrixA[i * MATRIX_SIZE + j] << " ";
+    //         std::cout << std::endl;
+    //     }
+    //     std::cout << std::endl;
+    // }
+
+    KrnlAddMat(matrixA, 0, matrixB, 0, MATRIX_SIZE, MATRIX_SIZE, res, 0);
 
     bool flag = 1;
     for (int i = 0; i < MATRIX_SIZE; i++)

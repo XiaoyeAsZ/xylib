@@ -8,7 +8,7 @@ using namespace blas;
 
 #define DATA_TYPE float
 #define DATA_WIDTH 32
-#define DATA_PACK_NUM 16
+#define DATA_PACK_NUM 8
 #define MAX_MATRIX_SIZE 128 * 128
 
 #define MAX_TOKEN_LEN 128

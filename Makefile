@@ -137,6 +137,36 @@ $(BUILD_DIR)/krnl_silu.xo:
 	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
 	v++ $(VPPFLAGS) -c -k KrnlSilu $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_silu.cpp -o $@
 
+$(BUILD_DIR)/krnl_remb.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlREmb $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_remb.cpp -o $@
+
+$(BUILD_DIR)/krnl_move.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlMove $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_move.cpp -o $@
+
+$(BUILD_DIR)/krnl_transpose.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlTranspose $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_transpose.cpp -o $@
+
+$(BUILD_DIR)/krnl_softmax.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlSoftmax $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_softmax.cpp -o $@
+
+$(BUILD_DIR)/krnl_addmat.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlAddMat $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_addmat.cpp -o $@
+
 # $(BUILD_DIR)/$(XO_NAME).xo: $(KERNEL_SRC_CPP) $(KERNEL_SRC_HEADERS)
 # 	mkdir -p $(BUILD_DIR)
 # 	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
@@ -146,7 +176,7 @@ $(BUILD_DIR)/krnl_silu.xo:
 
 
 # Link Kernel
-XO_LIST := $(BUILD_DIR)/krnl_gemm.xo $(BUILD_DIR)/krnl_gemv.xo $(BUILD_DIR)/krnl_dotmat.xo $(BUILD_DIR)/krnl_silu.xo
+XO_LIST := $(BUILD_DIR)/krnl_gemm.xo $(BUILD_DIR)/krnl_gemv.xo $(BUILD_DIR)/krnl_dotmat.xo $(BUILD_DIR)/krnl_silu.xo $(BUILD_DIR)/krnl_remb.xo $(BUILD_DIR)/krnl_move.xo $(BUILD_DIR)/krnl_transpose.xo $(BUILD_DIR)/krnl_softmax.xo $(BUILD_DIR)/krnl_addmat.xo
 $(BUILD_DIR)/$(XCLBIN): $(XO_LIST)
 	v++ $(VPPFLAGS) -l -o $@ $(XO_LIST)
 

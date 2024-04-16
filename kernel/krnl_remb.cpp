@@ -18,6 +18,8 @@ extern "C"
                   DATA_TYPE *MatrixRes,
                   const unsigned int OffsetRes)
     {
+        assert(DimN >= DATA_PACK_NUM);
+
         for (unsigned int IterRow = 0; IterRow < DimM; IterRow++)
         {
             for (unsigned int IterBlock = 0; IterBlock < DimN / DATA_PACK_NUM; IterBlock++)

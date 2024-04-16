@@ -1,11 +1,11 @@
 #ifndef __LLAMA__
 #define __LLAMA__
 
-#define LAYER_NUM 32
+#define LAYER_NUM 1
 #define HEAD_NUM 1
-#define EMBEDDING_DIM 256
-#define HEAD_DIM 8
-#define HIDDEN_DIM 64
+#define EMBEDDING_DIM 4096
+#define HEAD_DIM 128
+#define HIDDEN_DIM 4096 * 2
 #define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
@@ -47,7 +47,8 @@ struct TensorOnFPGA
 
     TensorOnFPGA SubTensorRow(unsigned int Start, unsigned int Len)
     {
-        return TensorOnFPGA(Data, Start, Len, Dim1);
+        assert(Len % Dim1 == 0);
+        return TensorOnFPGA(Data, Start, Len / Dim1, Dim1);
     }
 };
 
@@ -122,6 +123,7 @@ public:
     template <typename DType>
     TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
+    TensorOnHost<float> freq;
     TensorOnFPGA Freq;
     template <typename DType>
     TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
