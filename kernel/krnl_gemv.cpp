@@ -7,95 +7,308 @@
 using namespace blas;
 
 void ReadFromMem(
-    const unsigned int RowNum,
-    const unsigned int ColNum,
-    DATA_TYPE *MatrixInMem,
-    DATA_TYPE *VectorInMem,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &Matrix,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &Vector)
+    PACK_INT8_32 *MatrixHBM0,
+    PACK_INT8_32 *MatrixHBM1,
+    PACK_INT8_32 *MatrixHBM2,
+    PACK_INT8_32 *MatrixHBM3,
+    PACK_INT8_32 *MatrixHBM4,
+    PACK_INT8_32 *MatrixHBM5,
+    PACK_INT8_32 *MatrixHBM6,
+    PACK_INT8_32 *MatrixHBM7,
+    PACK_INT8_32 *MatrixHBM8,
+    PACK_INT8_32 *MatrixHBM9,
+    PACK_INT8_32 *MatrixHBM10,
+    PACK_INT8_32 *MatrixHBM11,
+    PACK_INT8_32 *MatrixHBM12,
+    PACK_INT8_32 *MatrixHBM13,
+    PACK_INT8_32 *MatrixHBM14,
+    PACK_INT8_32 *MatrixHBM15,
+    PACK_INT8_32 *VecDDR0,
+    hls::stream<PACK_INT8_32> *MatrixS,
+    hls::stream<PACK_INT8_32> *VecS,
+    unsigned int DimM,
+    unsigned int DimN)
 {
-
-    for (unsigned int IterRow = 0; IterRow < RowNum; IterRow++)
+#pragma HLS DATAFLOW
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
     {
-        for (unsigned int IterEntry = 0; IterEntry < ColNum / DATA_PACK_NUM; IterEntry++)
+        for (unsigned int IterRead = 0; IterRead < DimM / INT8_PACK_NUM; IterRead++)
         {
 #pragma HLS PIPELINE
+            PACK_INT8_32 ReadVec = VecDDR0[IterRead];
+            for (unsigned int IterUnroll = 0; IterUnroll < N_CHANNELS; IterUnroll++)
+            {
+                VecS[IterUnroll].write(ReadVec);
+            }
+            for (int i = 0; i < 32; i++)
+                std::cout << "read vec: " << ReadVec(i * 8 + 7, i * 8) << " ";
+            std::cout << std::endl;
+        }
+    }
 
-            WideType<DATA_TYPE, DATA_PACK_NUM> MatrixT;
-            WideType<DATA_TYPE, DATA_PACK_NUM> VectorT;
-
-            MatrixT = ((WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt *)MatrixInMem)[IterRow * ColNum / DATA_PACK_NUM + IterEntry];
-            VectorT = ((WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt *)VectorInMem)[IterEntry];
-
-            Matrix.write(MatrixT);
-            Vector.write(VectorT);
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM0[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[0].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM1[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[1].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM2[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[2].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM3[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[3].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM4[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[4].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM5[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[5].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM6[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[6].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM7[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[7].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM8[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[8].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM9[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[9].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM10[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[10].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM11[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[11].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM12[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[12].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM13[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[13].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM14[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[14].write(ReadMat);
+        }
+    }
+    for (unsigned int IterRow = 0; IterRow < DimM / N_CHANNELS; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < DimN / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 ReadMat = MatrixHBM15[IterRow * DimN / INT8_PACK_NUM + IterPack];
+            MatrixS[15].write(ReadMat);
         }
     }
 }
 
-void Gemv(
-    const unsigned int RowNum,
-    const unsigned int ColNum,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &Matrix,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt> &Vector,
-    hls::stream<RES_TYPE> &Res)
+void Dot(
+    hls::stream<PACK_INT8_32> &MatrixS,
+    hls::stream<PACK_INT8_32> &VecS,
+    hls::stream<DATA_TYPE> &VecRes,
+    unsigned int RowNum,
+    unsigned int ColNum)
 {
+    hls::stream<PACK_INT32_32> MulS;
+    for (unsigned int IterRow = 0; IterRow < RowNum; IterRow++)
+    {
+        for (unsigned int IterPack = 0; IterPack < ColNum / INT8_PACK_NUM; IterPack++)
+        {
+#pragma HLS PIPELINE
+            PACK_INT8_32 MatrixE = MatrixS.read();
+            PACK_INT8_32 VecE = VecS.read();
+            PACK_INT8_32 MulRes;
+            for (unsigned int IterMul = 0; IterMul < INT8_PACK_NUM; IterMul++)
+            {
+                ap_int<8> A = MatrixE(IterMul * 8 + 7, IterMul * 8);
+                ap_int<8> B = ap_int<8>(VecE(IterMul * 8 + 7, IterMul * 8));
+                MulRes(IterMul * 8 + 7, IterMul * 8) = A * B;
+                std::cout << "mul: " << ap_int<8>(MatrixE(IterMul * 8 + 7, IterMul * 8))
+                          << " : " << ap_int<8>(VecE(IterMul * 8 + 7, IterMul * 8)) << " : " << ap_int<8>(MulRes(IterMul * 8 + 7, IterMul * 8)) << std::endl;
+            }
+            MulS.write(MulRes);
+        }
+    }
 
     for (unsigned int IterRow = 0; IterRow < RowNum; IterRow++)
     {
-        RES_TYPE ParSum = 0;
-        for (unsigned int IterColPack = 0; IterColPack < ColNum / DATA_PACK_NUM; IterColPack++)
+        ap_int<8> PSumStage0 = 0;
+        ap_int<8> PSumStage1 = 0;
+        for (unsigned int IterPack = 0; IterPack < ColNum / INT8_PACK_NUM; IterPack++)
         {
 #pragma HLS PIPELINE
-            WideType<DATA_TYPE, DATA_PACK_NUM> X = Matrix.read();
-            WideType<DATA_TYPE, DATA_PACK_NUM> Y = Vector.read();
-            WideType<RES_TYPE, DATA_PACK_NUM> R;
-            for (unsigned int IterUnrollMul = 0; IterUnrollMul < DATA_PACK_NUM; IterUnrollMul++)
+            PACK_INT32_32 AddE = MulS.read();
+            for (unsigned int IterAdd = 0; IterAdd < INT8_PACK_NUM / 2; IterAdd++)
             {
-                R[IterUnrollMul] = X[IterUnrollMul] * Y[IterUnrollMul];
+                std::cout << "add: " << PSumStage0 << " : " << ap_int<8>(AddE(IterAdd * 8 + 7, IterAdd * 8)) << " res: ";
+                PSumStage0 += ap_int<8>(AddE(IterAdd * 8 + 7, IterAdd * 8));
+                std::cout << PSumStage0 << std::endl;
             }
-            // FIFO_Mul2AddTree.write(R);
-
-            for (unsigned int IterUnrolAdd = 0; IterUnrolAdd < DATA_PACK_NUM; IterUnrolAdd++)
+            PSumStage1 = PSumStage0;
+            for (unsigned int IterAdd = INT8_PACK_NUM / 2; IterAdd < INT8_PACK_NUM; IterAdd++)
             {
-                ParSum += R[IterUnrolAdd];
+                std::cout << "add: " << PSumStage1 << " : " << ap_int<8>(AddE(IterAdd * 8 + 7, IterAdd * 8)) << " res: ";
+                PSumStage1 += ap_int<8>(AddE(IterAdd * 8 + 7, IterAdd * 8));
+                std::cout << PSumStage1 << std::endl;
             }
         }
-        Res.write(ParSum);
+        VecRes.write(PSumStage1);
     }
 }
 
 void WriteToMem(
-    const unsigned int ColNum,
-    RES_TYPE *ResInMem,
-    hls::stream<RES_TYPE> &Res)
+    hls::stream<DATA_TYPE> *VecRes,
+    PACK_INT8_16 *VecResDDR0,
+    unsigned int DimM,
+    unsigned int DimN)
 {
-    for (unsigned int IterCol = 0; IterCol < ColNum; IterCol++)
+    for (unsigned int IterVec = 0; IterVec < DimN / N_CHANNELS; IterVec++)
     {
-#pragma HLS PIPELINE
-        ResInMem[IterCol] = Res.read();
+        PACK_INT8_16 ResT;
+        for (unsigned int IterUnroll = 0; IterUnroll < N_CHANNELS; IterUnroll++)
+        {
+#pragma HLS UNROLL
+            ResT(IterUnroll * 8 + 7, IterUnroll * 8) = VecRes[IterUnroll].read();
+        }
+        VecResDDR0[IterVec] = ResT;
     }
 }
 
 extern "C"
 {
     void KrnlGemv(
-        const unsigned int RowNum,
-        const unsigned int ColNum,
-        // int *MatrixInMem,
-        // int *VectorInMem,
-        // int *ResInMem
-        DATA_TYPE MatrixInMem[MAX_MATRIX_SIZE],
-        DATA_TYPE VectorInMem[MAX_VECTOR_SIZE],
-        RES_TYPE ResInMem[MAX_VECTOR_SIZE])
+        PACK_INT8_32 *MatrixHBM0,
+        PACK_INT8_32 *MatrixHBM1,
+        PACK_INT8_32 *MatrixHBM2,
+        PACK_INT8_32 *MatrixHBM3,
+        PACK_INT8_32 *MatrixHBM4,
+        PACK_INT8_32 *MatrixHBM5,
+        PACK_INT8_32 *MatrixHBM6,
+        PACK_INT8_32 *MatrixHBM7,
+        PACK_INT8_32 *MatrixHBM8,
+        PACK_INT8_32 *MatrixHBM9,
+        PACK_INT8_32 *MatrixHBM10,
+        PACK_INT8_32 *MatrixHBM11,
+        PACK_INT8_32 *MatrixHBM12,
+        PACK_INT8_32 *MatrixHBM13,
+        PACK_INT8_32 *MatrixHBM14,
+        PACK_INT8_32 *MatrixHBM15,
+        PACK_INT8_32 *VecDDR0,
+        PACK_INT8_16 *VecResDDR0,
+        unsigned int DimM,
+        unsigned int DimN)
     {
-        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, 1> Matrix;
-        hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, 1> Vector;
-        hls::stream<RES_TYPE, 1> Res;
+        hls::stream<PACK_INT8_32> MatrixS[16];
+        hls::stream<PACK_INT8_32> VecS[16];
+        hls::stream<DATA_TYPE> VecRes[16];
+#pragma HLS ARRAY_PARTITION variable = MatrixS dim = 1 complete
+#pragma HLS ARRAY_PARTITION variable = VecS dim = 1 complete
+#pragma HLS ARRAY_PARTITION variable = VecRes dim = 1 complete
 
 #pragma HLS DATAFLOW
-        ReadFromMem(RowNum, ColNum, MatrixInMem, VectorInMem, Matrix, Vector);
-        Gemv(RowNum, ColNum, Matrix, Vector, Res);
-        WriteToMem(ColNum, ResInMem, Res);
+
+        ReadFromMem(MatrixHBM0, MatrixHBM1, MatrixHBM2, MatrixHBM3,
+                    MatrixHBM4, MatrixHBM5, MatrixHBM6, MatrixHBM7,
+                    MatrixHBM8, MatrixHBM9, MatrixHBM10, MatrixHBM11,
+                    MatrixHBM12, MatrixHBM13, MatrixHBM14, MatrixHBM15,
+                    VecDDR0, MatrixS, VecS, DimM, DimN);
+
+        for (unsigned int IterDot = 0; IterDot < N_CHANNELS; IterDot++)
+        {
+#pragma HLS UNROLL
+            Dot(MatrixS[IterDot], VecS[IterDot], VecRes[IterDot], DimM / N_CHANNELS, DimN);
+        }
+
+        WriteToMem(VecRes, VecResDDR0, DimM, DimN);
     }
 }
