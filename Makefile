@@ -167,6 +167,7 @@ $(BUILD_DIR)/krnl_addmat.xo:
 	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
 	v++ $(VPPFLAGS) -c -k KrnlAddMat $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_addmat.cpp -o $@
 
+
 # $(BUILD_DIR)/$(XO_NAME).xo: $(KERNEL_SRC_CPP) $(KERNEL_SRC_HEADERS)
 # 	mkdir -p $(BUILD_DIR)
 # 	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)

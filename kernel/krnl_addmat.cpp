@@ -1,14 +1,8 @@
 #include "hls_stream.h"
 #include "types.hpp"
+#include "krnl_addmat.h"
 
 using namespace blas;
-
-#define DATA_TYPE float
-#define DATA_WIDTH 32
-#define DATA_PACK_NUM 8
-#define MAX_MATRIX_SIZE 128 * 128
-
-#define MAX_TOKEN_LEN 128
 
 extern "C"
 {
@@ -29,8 +23,9 @@ extern "C"
 // #pragma HLS PIPELINE
             DA = ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixA[OffsetA + IterAdd * DATA_PACK_NUM]))[0];
             DB = ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixB[OffsetB + IterAdd * DATA_PACK_NUM]))[0];
-            for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++)
+            for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++){
                 DR[IterUnroll] = DA[IterUnroll] + DB[IterUnroll];
+            }
             ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + IterAdd * DATA_PACK_NUM]))[0] = DR;
         }
     }

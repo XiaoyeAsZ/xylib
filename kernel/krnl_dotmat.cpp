@@ -30,7 +30,8 @@ extern "C"
 
             for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++)
             {
-                Res[IterUnroll] = AIn[IterUnroll] * BIn[IterUnroll];
+                ap_int<32> TRes = AIn[IterUnroll] * BIn[IterUnroll];
+                Res[IterUnroll] = int(TRes / 127.0);
                 // std::cout << "mul " << AIn[IterUnroll] << " and " << BIn[IterUnroll] << " res : " << Res[IterUnroll] << std::endl;
             }
 

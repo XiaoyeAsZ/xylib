@@ -6,9 +6,9 @@
 
 using namespace blas;
 
-#define DATA_TYPE float
-#define DATA_WIDTH 32
-#define DATA_PACK_NUM 16
+#define DATA_TYPE ap_int<8>
+#define DATA_WIDTH 8
+#define DATA_PACK_NUM 32
 #define MAX_MATRIX_SIZE 128 * 128
 
 extern "C"

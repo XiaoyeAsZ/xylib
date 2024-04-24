@@ -147,7 +147,7 @@ void Mac(
     hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
 {
 
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Flush;
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Exit;
 
@@ -163,7 +163,7 @@ void Mac(
     hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
 {
 
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Flush;
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> Exit;
 
@@ -175,7 +175,7 @@ void Mac(
 void Mul(
     hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit)
 {
@@ -187,7 +187,7 @@ void Mul(
 
     DualTaggedType<DATA_TYPE> A;
     WideType<DATA_TYPE, DATA_PACK_NUM> B;
-    WideType<DATA_TYPE, DATA_PACK_NUM> MulRes;
+    WideType<ap_int<32>, DATA_PACK_NUM> MulRes;
     do
     {
 #pragma HLS PIPELINE
@@ -234,7 +234,7 @@ void Mul(
     hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTriNxt,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit)
 {
@@ -246,7 +246,7 @@ void Mul(
 
     DualTaggedType<DATA_TYPE> A;
     WideType<DATA_TYPE, DATA_PACK_NUM> B;
-    WideType<DATA_TYPE, DATA_PACK_NUM> MulRes;
+    WideType<ap_int<32>, DATA_PACK_NUM> MulRes;
 
     do
     {
@@ -295,18 +295,18 @@ void Mul(
 }
 
 void Add(
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit,
     hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
 {
-    WideType<DATA_TYPE, DATA_PACK_NUM> SumVec = WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt(0);
+    WideType<ap_int<32>, DATA_PACK_NUM> SumVec = WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt(0);
 
     bool exit;
     do
     {
 #pragma HLS PIPELINE
-        WideType<DATA_TYPE, DATA_PACK_NUM> ReadVec = SumBuf.read();
+        WideType<ap_int<32>, DATA_PACK_NUM> ReadVec = SumBuf.read();
         WideType<bool, DATA_PACK_NUM> ReadFlush = Flush.read();
         WideType<bool, DATA_PACK_NUM> ReadExit = Exit.read();
         exit = ReadExit[DATA_PACK_NUM - 1];
@@ -316,7 +316,7 @@ void Add(
             SumVec[IterAcc] += ReadVec[IterAcc];
             if (ReadFlush[IterAcc])
             {
-                AccRes.write(SumVec[IterAcc]);
+                AccRes.write(int(SumVec[IterAcc] / 127.0));
                 SumVec[IterAcc] = 0;
             }
         }
@@ -383,6 +383,7 @@ extern "C"
 #pragma HLS ARRAY_PARTITION variable = Exit dim = 1 complete
 
 #pragma HLS DATAFLOW
+
         ReadFromMem(DimM, DimN, DimK, MatrixAInMem, MatrixBInMem, MatrixA, MatrixB);
 
         UnpackTri(DimM, DimN, DimK, MatrixA, MatrixB, MatrixATaged, MatrixBTri[0]);
@@ -395,5 +396,6 @@ extern "C"
         Mac(MatrixATaged[DATA_PACK_NUM - 1], MatrixBTri[DATA_PACK_NUM - 1], AccRes[DATA_PACK_NUM - 1]);
 
         WriteToMem(DimM, DimK, AccRes, MatrixResInMem);
+
     }
 }

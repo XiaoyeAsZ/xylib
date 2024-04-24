@@ -34,10 +34,11 @@ extern "C"
                 WideType<DATA_TYPE, DATA_PACK_NUM> DOut;
                 for (unsigned int IterR = 0; IterR < DATA_PACK_NUM; IterR += 2)
                 {
-                    DOut[IterR] =
-                        DIn[IterR] * DW[IterR] - DIn[IterR + 1] * DW[IterR + 1];
-                    DOut[IterR + 1] =
-                        DIn[IterR] * DW[IterR + 1] + DIn[IterR + 1] * DW[IterR];
+                    ap_int<32> T1 = DIn[IterR] * DW[IterR] - DIn[IterR + 1] * DW[IterR + 1];
+                    DOut[IterR] = int(T1 / 127.0);
+                    ap_int<32> T2 = DIn[IterR] * DW[IterR + 1] + DIn[IterR + 1] * DW[IterR];
+                    DOut[IterR + 1] = int(T2 / 127.0);
+                        
                 }
                 ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + INDEX_FROM_2D(IterRow, IterBlock * DATA_PACK_NUM, DimN)]))[0] = DOut;
             }

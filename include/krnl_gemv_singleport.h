@@ -1,5 +1,5 @@
-#ifndef __KRNL_GEMV__
-#define __KRNL_GEMV__
+#ifndef __KRNL_GEMV_SINGLEPORT__
+#define __KRNL_GEMV_SINGLEPORT__
 
 #include "hls_stream.h"
 #include "types.hpp"
@@ -13,40 +13,34 @@ using namespace blas;
 
 #define DATA_PACK_NUM 32
 
-#define MAX_MATRIX_SIZE 64*64
-#define MAX_VECTOR_SIZE 64
+#define MAX_MATRIX_SIZE 128 * 128
+#define MAX_VECTOR_SIZE 128
 
 typedef ap_int<8 * 32> PACK_INT8_32;
 typedef ap_int<8 * 16> PACK_INT8_16;
 typedef ap_int<32 * 32> PACK_INT32_32;
 
 void ReadFromMem(
-    PACK_INT8_32 *Matrix,
-    PACK_INT8_32 *Vec,
-    hls::stream<PACK_INT8_32> &MatrixS,
-    hls::stream<PACK_INT8_32> &VecS,
+    PACK_INT8_32 *MatrixDDR1,
+    PACK_INT8_32 *VecDDR0,
+    hls::stream<PACK_INT8_32> *MatrixS,
+    hls::stream<PACK_INT8_32> *VecS,
     unsigned int DimM,
     unsigned int DimN);
 
 void Dot(
     hls::stream<PACK_INT8_32> &MatrixS,
     hls::stream<PACK_INT8_32> &VecS, 
-    hls::stream<DATA_TYPE> &ResS,
-    unsigned int DimM,
-    unsigned int DimN);
-
-void WriteToMem(
-    hls::stream<DATA_TYPE> &ResS,
-    PACK_INT8_32 *Res,
-    unsigned int DimM,
-    unsigned int DimN);
+    hls::stream<DATA_TYPE> &VecRes,
+    unsigned int RowNum,
+    unsigned int ColNum);
 
 extern "C"
 {
-    void KrnlGemv(
-        PACK_INT8_32 *Matrix,
-        PACK_INT8_32 *Vec,
-        PACK_INT8_32 *Res,
+    void KrnlGemvSP(
+        PACK_INT8_32 *MatrixDDR1,
+        PACK_INT8_32 *VecDDR0,
+        PACK_INT8_16 *VecResDDR1,
         unsigned int DimM,
         unsigned int DimN);
 }

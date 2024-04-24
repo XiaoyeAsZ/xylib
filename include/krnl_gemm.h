@@ -6,12 +6,11 @@
 
 using namespace blas;
 
-#define DATA_TYPE float
-#define DATA_WIDTH 32
-#define RES_TYPE ap_int<32>
-#define RES_WIDTH 32
+#define DATA_TYPE ap_int<8>
+#define DATA_WIDTH 8
+
 #define DATA_PACK_NUM 8
-#define MAX_MATRIX_SIZE 128 * 128
+#define MAX_MATRIX_SIZE 64 * 64
 
 void ReadFromMem(
     const unsigned int DimM,
@@ -36,7 +35,7 @@ void Mac(
 void Mul(
     hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit);
 
@@ -44,12 +43,12 @@ void Mul(
     hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTriNxt,
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit);
 
 void Add(
-    hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
+    hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit,
     hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes);

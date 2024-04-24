@@ -3,15 +3,15 @@
 
 #define LAYER_NUM 1
 #define HEAD_NUM 1
-#define EMBEDDING_DIM 4096
-#define HEAD_DIM 128
-#define HIDDEN_DIM 4096 * 2
+#define EMBEDDING_DIM 64
+#define HEAD_DIM 32
+#define HIDDEN_DIM 64
 #define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
 #define GEMM_MAX_MATRIX_K 4096
 
-#define MAX_TOKEN_LEN 16
+#define MAX_TOKEN_LEN 1024
 
 #define RANDOM_INPUT
 #define DEBUG
@@ -71,6 +71,12 @@ struct TensorOnHost
         this->Dim0 = Dim0;
         this->Dim1 = Dim1;
     }
+
+    TensorOnHost SubTensorRow(unsigned int Start, unsigned int Len)
+    {
+        assert(Len % Dim1 == 0);
+        return TensorOnHost(&Data[Start], Len / Dim1, Dim1);
+    }
 };
 
 class OCLWrap
@@ -91,6 +97,9 @@ private:
     cl::Kernel KrnlTranspose;
     cl::Kernel KrnlSoftmax;
     cl::Kernel KrnlRMSNorm;
+
+    cl::Kernel KrnlGemv;
+
 
 public:
     OCLWrap(cl::Context &Ctx, cl::Program Prog, cl::CommandQueue &Queue);
@@ -123,7 +132,7 @@ public:
     template <typename DType>
     TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
-    TensorOnHost<float> freq;
+    TensorOnHost<ap_int<8>> freq;
     TensorOnFPGA Freq;
     template <typename DType>
     TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
@@ -159,7 +168,7 @@ private:
     std::vector<TensorOnFPGA> KCache;
     std::vector<TensorOnFPGA> VCache;
 
-    unsigned int MaxCacheLen = 16;
+    unsigned int MaxCacheLen = 1024;
     unsigned int CurLen = 0;
 
 public:

@@ -23,8 +23,8 @@ extern "C"
             for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++)
             {
 
-                Res[IterUnroll] = Input[IterUnroll] * (1.0 / (1.0 + hls::exp(-Input[IterUnroll])));
-                //std::cout << "source: " << Input[IterUnroll] << " after: " << Res[IterUnroll] << " ";
+                Res[IterUnroll] = (Input[IterUnroll] * (1.0 / (1.0 + hls::exp(-Input[IterUnroll] / 127.0)))) * 127;
+                // std::cout << "source: " << Input[IterUnroll] << " after: " << Res[IterUnroll] << " ";
             }
             // std::cout << std::endl;
             ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + IterRound * DATA_PACK_NUM]))[0] = Res;

@@ -6,12 +6,12 @@
 
 using namespace blas;
 
-#define DATA_TYPE ap_int<32>
-#define DATA_WIDTH 32
-#define RES_TYPE ap_int<32>
-#define RES_WIDTH 32
-#define DATA_PACK_NUM 8
-#define MAX_MATRIX_SIZE 128 * 128
+#define DATA_TYPE ap_int<8>
+#define DATA_WIDTH 8
+#define DATA_PACK_NUM 32
+#define MAX_MATRIX_SIZE 32 * 1024
+
+typedef ap_int<8 * 32> PACK_INT8_32;
 
 extern "C"
 {

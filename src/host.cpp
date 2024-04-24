@@ -21,7 +21,7 @@ DType *GenerateRandomInput(unsigned int Len)
 {
   DType *GeneratedInput = new DType[Len];
   for (unsigned int IterRnd = 0; IterRnd < Len; IterRnd++)
-    GeneratedInput[IterRnd] = DType(float(rand() - RAND_MAX / 2) / RAND_MAX);
+    GeneratedInput[IterRnd] = DType(int(float(rand() * 2 - RAND_MAX) / RAND_MAX * 127));
   return GeneratedInput;
 }
 
@@ -34,10 +34,10 @@ TensorOnHost<DType> operator*(TensorOnHost<DType> &MA, TensorOnHost<DType> &MB)
   {
     for (int j = 0; j < MB.Dim1; j++)
     {
-      DType tmp = 0;
+      ap_int<32> tmp = 0;
       for (int k = 0; k < MA.Dim1; k++)
         tmp += MA.Data[i * MA.Dim1 + k] * MB.Data[k * MB.Dim1 + j];
-      Res.Data[i * MB.Dim1 + j] = tmp;
+      Res.Data[i * MB.Dim1 + j] = int(tmp / 127.0);
     }
   }
   return Res;
@@ -66,7 +66,7 @@ TensorOnHost<DType> SiluTest(TensorOnHost<DType> &MA)
   for (int i = 0; i < MA.Dim0 * MA.Dim1; i++)
   {
     DType x = MA.Data[i];
-    Res.Data[i] = x * (1.0 / (1.0 + exp(-x)));
+    Res.Data[i] = (x * (1.0 / (1.0 + exp(float(-x) / 127.0)))) * 127;
   }
   return Res;
 }
@@ -78,7 +78,8 @@ TensorOnHost<DType> DotTest(TensorOnHost<DType> &MA, TensorOnHost<DType> &MB)
   TensorOnHost<DType> Res(new DType[MA.Dim0 * MA.Dim1], MA.Dim0, MA.Dim1);
   for (int i = 0; i < MA.Dim0 * MA.Dim1; i++)
   {
-    Res.Data[i] = MA.Data[i] * MB.Data[i];
+    ap_int<32> tmp = MA.Data[i] * MB.Data[i];
+    Res.Data[i] = int(tmp / 127.0);
   }
   return Res;
 }
@@ -90,8 +91,10 @@ TensorOnHost<DType> REmbTest(TensorOnHost<DType> &MA, TensorOnHost<DType> &MB)
   TensorOnHost<DType> Res(new DType[MA.Dim0 * MA.Dim1], MA.Dim0, MA.Dim1);
   for (int i = 0; i < MA.Dim0 * MA.Dim1; i += 2)
   {
-    Res.Data[i] = MA.Data[i] * MB.Data[i] - MA.Data[i + 1] * MB.Data[i + 1];
-    Res.Data[i + 1] = MA.Data[i] * MB.Data[i + 1] + MA.Data[i + 1] * MB.Data[i];
+    ap_int<32> T1 = MA.Data[i] * MB.Data[i] - MA.Data[i + 1] * MB.Data[i + 1];
+    Res.Data[i] = int(T1 / 127.0);
+    ap_int<32> T2 = MA.Data[i] * MB.Data[i + 1] + MA.Data[i + 1] * MB.Data[i];
+    Res.Data[i + 1] = int(T2 / 127.0);
   }
   return Res;
 }
@@ -117,11 +120,11 @@ TensorOnHost<DType> SoftmaxTest(TensorOnHost<DType> &MA)
     float tmp = 0;
     for (int j = 0; j < MA.Dim1; j++)
     {
-      tmp += exp(MA.Data[i * MA.Dim1 + j]);
+      tmp += exp(float(MA.Data[i * MA.Dim1 + j]) / 127.0);
     }
     for (int j = 0; j < MA.Dim1; j++)
     {
-      Res.Data[i * MA.Dim1 + j] = exp(MA.Data[i * MA.Dim1 + j]) / tmp;
+      Res.Data[i * MA.Dim1 + j] = int(exp(float(MA.Data[i * MA.Dim1 + j]) / 127.0) / tmp * 127);
     }
   }
   return Res;
@@ -133,9 +136,10 @@ bool operator==(TensorOnHost<DType> &MA, TensorOnHost<DType> &MB)
   assert(MA.Dim0 == MB.Dim0 && MA.Dim1 == MB.Dim1);
   for (int i = 0; i < MA.Dim0 * MA.Dim1; i++)
   {
-    if (abs(MA.Data[i] - MB.Data[i]) > 1e-5)
+    // printf("%d : %d\n", MA.Data[i], MB.Data[i]);
+    if (MA.Data[i] != MB.Data[i])
     {
-      printf("%.10f differ %.10f\n", MA.Data[i], MB.Data[i]);
+      std::cout<< MA.Data[i]<<" differ "<< MB.Data[i] <<std::endl;
       return 0;
     }
   }
@@ -164,8 +168,10 @@ OCLWrap::OCLWrap(cl::Context &Ctx, cl::Program Prog, cl::CommandQueue &Queue)
   OCL_CHECK(err, this->KrnlSoftmax = cl::Kernel(this->Prog, "KrnlSoftmax", &err));
   OCL_CHECK(err, this->KrnlAddMat = cl::Kernel(this->Prog, "KrnlAddMat", &err));
 
-  this->freq = TensorOnHost<float>(GenerateRandomInput<float>(MAX_TOKEN_LEN * HEAD_DIM), MAX_TOKEN_LEN, HEAD_DIM);
-  this->Freq = TensorOnFPGA(this->AllocateReadBuffer<float>(MAX_TOKEN_LEN * HEAD_DIM), 0, MAX_TOKEN_LEN, HEAD_DIM);
+  OCL_CHECK(err, this->KrnlGemv = cl::Kernel(this->Prog, "KrnlGemv", &err));
+
+  this->freq = TensorOnHost<ap_int<8>>(GenerateRandomInput<ap_int<8>>(MAX_TOKEN_LEN * HEAD_DIM), MAX_TOKEN_LEN, HEAD_DIM);
+  this->Freq = TensorOnFPGA(this->AllocateReadBuffer<ap_int<8>>(MAX_TOKEN_LEN * HEAD_DIM), 0, MAX_TOKEN_LEN, HEAD_DIM);
   this->Map(freq, this->Freq);
 };
 
@@ -179,9 +185,10 @@ cl::Buffer OCLWrap::AllocateReadBuffer(unsigned int Size)
   cl_int err;
   cl::Buffer Buf;
 
-  std::cout
-      << "try to allocate: " << (Size) * sizeof(DType) / 1000000 << " MB RBuf" << std::endl;
-  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_READ_ONLY, (Size) * sizeof(DType), nullptr, &err));
+  std::cout << "try to allocate: " << (Size) * sizeof(DType) / 1000000 << " MB RBuf" << std::endl;
+  cl_mem_ext_ptr_t ext = {0};
+  ext.banks = 0 | XCL_MEM_TOPOLOGY;
+  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_EXT_PTR_XILINX | CL_MEM_READ_ONLY, (Size) * sizeof(DType), &ext, &err));
   OCL_CHECK(err, err = this->Queue.enqueueMigrateMemObjects({Buf}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
   totalmem += (Size) * sizeof(DType) / 1000000;
   std::cout << "total: " << totalmem << std::endl;
@@ -195,7 +202,9 @@ cl::Buffer OCLWrap::AllocateWriteBuffer(unsigned int Size)
   cl_int err;
   cl::Buffer Buf;
   std::cout << "try to allocate: " << (Size) * sizeof(DType) / 1000000 << " MB WBuf" << std::endl;
-  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_WRITE_ONLY, (Size) * sizeof(DType), nullptr, &err));
+  cl_mem_ext_ptr_t ext = {0};
+  ext.banks = 0 | XCL_MEM_TOPOLOGY;
+  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_EXT_PTR_XILINX | CL_MEM_WRITE_ONLY, (Size) * sizeof(DType), &ext, &err));
   OCL_CHECK(err, err = this->Queue.enqueueMigrateMemObjects({Buf}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
   totalmem += (Size) * sizeof(DType) / 1000000;
   std::cout << "total: " << totalmem << std::endl;
@@ -208,9 +217,11 @@ cl::Buffer OCLWrap::AllocateReadWriteBuffer(unsigned int Size)
 {
   cl_int err;
   cl::Buffer Buf;
-  std::cout << CL_DEVICE_MAX_MEM_ALLOC_SIZE << std::endl;
+
   std::cout << "try to allocate: " << (Size) * sizeof(DType) / 1000000 << " MB RWBuf" << std::endl;
-  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_READ_WRITE, (Size) * sizeof(DType), nullptr, &err));
+  cl_mem_ext_ptr_t ext = {0};
+  ext.banks = 0 | XCL_MEM_TOPOLOGY;
+  OCL_CHECK(err, Buf = cl::Buffer(this->Ctx, CL_MEM_EXT_PTR_XILINX | CL_MEM_READ_WRITE, (Size) * sizeof(DType), &ext, &err));
   OCL_CHECK(err, err = this->Queue.enqueueMigrateMemObjects({Buf}, CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED));
   totalmem += (Size) * sizeof(DType) / 1000000;
   std::cout << "total: " << totalmem << std::endl;
@@ -258,13 +269,36 @@ TensorOnFPGA OCLWrap::Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1,
 
   TensorOnFPGA Buf(this->AllocateReadWriteBuffer<DType>(Tensor0.Dim0 * Tensor1.Dim1), 0, Tensor0.Dim0, Tensor1.Dim1);
 
-  this->KrnlGemm.setArg(0, Tensor0.Dim0);
-  this->KrnlGemm.setArg(1, Tensor0.Dim1);
-  this->KrnlGemm.setArg(2, Tensor1.Dim1);
-  this->KrnlGemm.setArg(3, Tensor0.Data);
-  this->KrnlGemm.setArg(4, Tensor1.Data);
-  this->KrnlGemm.setArg(5, Buf.Data);
-  OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlGemm, &Events, &RunEvent));
+  if (Tensor0.Dim0 == 1)
+  {
+    std::cout << "real vec mul\n";
+    cl::Event Te;
+    TensorOnFPGA T = this->Trans<ap_int<8>>(Tensor1, Events, Te);
+
+    Events.push_back(Te);
+    Events.back().wait();
+    std::cout << "trans finish\n";
+
+    TensorOnFPGA V = Tensor0;
+    V.Dim0 = V.Dim1;
+    V.Dim1 = 1;
+    this->KrnlGemv.setArg(0, T.Data);
+    this->KrnlGemv.setArg(1, V.Data);
+    this->KrnlGemv.setArg(2, Buf.Data);
+    this->KrnlGemv.setArg(3, T.Dim0);
+    this->KrnlGemv.setArg(4, T.Dim1);
+    OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlGemv, &Events, &RunEvent));
+  }
+  else
+  {
+    this->KrnlGemm.setArg(0, Tensor0.Dim0);
+    this->KrnlGemm.setArg(1, Tensor0.Dim1);
+    this->KrnlGemm.setArg(2, Tensor1.Dim1);
+    this->KrnlGemm.setArg(3, Tensor0.Data);
+    this->KrnlGemm.setArg(4, Tensor1.Data);
+    this->KrnlGemm.setArg(5, Buf.Data);
+    OCL_CHECK(err, err = this->Queue.enqueueTask(this->KrnlGemm, &Events, &RunEvent));
+  }
 
   return Buf;
 };
@@ -553,6 +587,8 @@ TensorOnFPGA AttentionLayer<DType>::operator()(TensorOnFPGA Input, std::vector<c
   std::vector<TensorOnFPGA> Heads;
   std::vector<cl::Event> Tail;
 
+  
+
   for (unsigned int IterHead = 0; IterHead < HEAD_NUM; IterHead++)
   {
     std::vector<cl::Event> EventsInHead;
@@ -563,11 +599,11 @@ TensorOnFPGA AttentionLayer<DType>::operator()(TensorOnFPGA Input, std::vector<c
 #ifdef DEBUG
     std::cout << "ATTN Mul (Input * WQ)\n";
     EventsInHead.back().wait();
-    TensorOnHost<float> x0(new float[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
+    TensorOnHost<DType> x0(new DType[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
     OCL.Map(Input, x0);
-    TensorOnHost<float> y0(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+    TensorOnHost<DType> y0(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
     OCL.Map(H0, y0);
-    TensorOnHost<float> r0 = x0 * this->WQHost[IterHead];
+    TensorOnHost<DType> r0 = x0 * this->WQHost[IterHead];
     std::cout << (r0 == y0 ? "ATTN Mul Mul (Input * WQ) PASS!!!\n" : "ATTN Mul Mul (Input * WQ) ERROR!!!\n");
 #endif
 
@@ -576,9 +612,9 @@ TensorOnFPGA AttentionLayer<DType>::operator()(TensorOnFPGA Input, std::vector<c
 #ifdef DEBUG
     std::cout << "ATTN Mul (Input * WK)\n";
     EventsInHead.back().wait();
-    TensorOnHost<float> y1(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+    TensorOnHost<DType> y1(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
     OCL.Map(H1, y1);
-    TensorOnHost<float> r1 = x0 * this->WKHost[IterHead];
+    TensorOnHost<DType> r1 = x0 * this->WKHost[IterHead];
     std::cout << (r1 == y1 ? "ATTN Mul (Input * WK) PASS!!!\n" : "ATTN Mul (Input * WK) ERROR!!!\n");
 #endif
 
@@ -587,173 +623,177 @@ TensorOnFPGA AttentionLayer<DType>::operator()(TensorOnFPGA Input, std::vector<c
 #ifdef DEBUG
     std::cout << "ATTN Mul (Input * WV)\n";
     EventsInHead.back().wait();
-    TensorOnHost<float> y2(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+    TensorOnHost<DType> y2(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
     OCL.Map(H2, y2);
-    TensorOnHost<float> r2 = x0 * this->WVHost[IterHead];
+    TensorOnHost<DType> r2 = x0 * this->WVHost[IterHead];
     std::cout << (r2 == y2 ? "ATTN Mul (Input * WV) PASS!!!\n" : "ATTN Mul (Input * WV) ERROR!!!\n");
 #endif
 
-    TensorOnFPGA H3 = this->OCL.REmb<DType>(H0, this->OCL.Freq, EventsInHead, RunEvent);
+    TensorOnFPGA H3t = this->OCL.Freq.SubTensorRow(0, Input.Dim0 * HEAD_DIM);
+    TensorOnFPGA H3 = this->OCL.REmb<DType>(H0, H3t, EventsInHead, RunEvent);
     EventsInHead.push_back(RunEvent);
 #ifdef DEBUG
     std::cout << "ATTN REmb (Q)\n";
     EventsInHead.back().wait();
-    TensorOnHost<float> y3(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+    TensorOnHost<DType> y3(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
     OCL.Map(H3, y3);
-    TensorOnHost<float> r3 = REmbTest(r0, this->OCL.freq);
+    TensorOnHost<DType> r3t = this->OCL.freq.SubTensorRow(0, Input.Dim0 * HEAD_DIM);
+    TensorOnHost<DType> r3 = REmbTest(r0, r3t);
     std::cout << (r3 == y3 ? "ATTN REmb (Q) PASS!!!\n" : "ATTN REmb (Q) ERROR!!!\n");
 #endif
 
-    TensorOnFPGA H4 = this->OCL.REmb<DType>(H1, this->OCL.Freq, EventsInHead, RunEvent);
+    TensorOnFPGA H4t = this->OCL.Freq.SubTensorRow(0, Input.Dim0 * HEAD_DIM);
+    TensorOnFPGA H4 = this->OCL.REmb<DType>(H1, H4t, EventsInHead, RunEvent);
     EventsInHead.push_back(RunEvent);
 #ifdef DEBUG
     std::cout << "ATTN REmb (K)\n";
     EventsInHead.back().wait();
-    TensorOnHost<float> y4(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+    TensorOnHost<DType> y4(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
     OCL.Map(H4, y4);
-    TensorOnHost<float> r4 = REmbTest(r1, this->OCL.freq);
+    TensorOnHost<DType> r4t = this->OCL.freq.SubTensorRow(0, Input.Dim0 * HEAD_DIM);
+    TensorOnHost<DType> r4 = REmbTest(r1, r4t);
     std::cout << (r4 == y4 ? "ATTN REmb (K) PASS!!!\n" : "ATTN REmb (K) ERROR!!!\n");
 #endif
 
-    assert(this->CurLen + H3.Dim0 <= this->MaxCacheLen);
-    assert(this->CurLen + H4.Dim0 <= this->MaxCacheLen);
+        assert(this->CurLen + H3.Dim0 <= this->MaxCacheLen);
+        assert(this->CurLen + H4.Dim0 <= this->MaxCacheLen);
 
-    TensorOnFPGA tmp = this->KCache[IterHead].SubTensorRow(this->CurLen * HEAD_DIM, H3.Dim0 * H3.Dim1);
-    this->OCL.Move<DType>(H3, tmp, EventsInHead, RunEvent);
-    EventsInHead.push_back(RunEvent);
-#ifdef DEBUG
-    std::cout << "ATTN Move (KCache)\n";
-    EventsInHead.back().wait();
-    TensorOnHost<float> y5(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
-    OCL.Map(tmp, y5);
-    std::cout << (y3 == y5 ? "ATTN Move (KCache) PASS!!!\n" : "ATTN Move (KCache) ERROR!!!\n");
-#endif
+        TensorOnFPGA tmp = this->KCache[IterHead].SubTensorRow(this->CurLen * HEAD_DIM, H3.Dim0 * H3.Dim1);
+        this->OCL.Move<DType>(H3, tmp, EventsInHead, RunEvent);
+        EventsInHead.push_back(RunEvent);
+    #ifdef DEBUG
+        std::cout << "ATTN Move (KCache)\n";
+        EventsInHead.back().wait();
+        TensorOnHost<DType> y5(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+        OCL.Map(tmp, y5);
+        std::cout << (y3 == y5 ? "ATTN Move (KCache) PASS!!!\n" : "ATTN Move (KCache) ERROR!!!\n");
+    #endif
 
-    tmp = this->VCache[IterHead].SubTensorRow(this->CurLen * HEAD_DIM, H4.Dim0 * H4.Dim1);
-    this->OCL.Move<DType>(H4, tmp, EventsInHead, RunEvent);
-    EventsInHead.push_back(RunEvent);
-#ifdef DEBUG
-    std::cout << "ATTN Move (VCache)\n";
-    EventsInHead.back().wait();
-    TensorOnHost<float> y6(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
-    OCL.Map(tmp, y6);
-    std::cout << (y4 == y6 ? "ATTN Move (VCache) PASS!!!\n" : "ATTN Move (VCache) ERROR!!!\n");
-#endif
+        tmp = this->VCache[IterHead].SubTensorRow(this->CurLen * HEAD_DIM, H4.Dim0 * H4.Dim1);
+        this->OCL.Move<DType>(H4, tmp, EventsInHead, RunEvent);
+        EventsInHead.push_back(RunEvent);
+    #ifdef DEBUG
+        std::cout << "ATTN Move (VCache)\n";
+        EventsInHead.back().wait();
+        TensorOnHost<DType> y6(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+        OCL.Map(tmp, y6);
+        std::cout << (y4 == y6 ? "ATTN Move (VCache) PASS!!!\n" : "ATTN Move (VCache) ERROR!!!\n");
+    #endif
 
-    TensorOnFPGA H5 = this->OCL.Trans<DType>(H4, EventsInHead, RunEvent);
-    EventsInHead.push_back(RunEvent);
-#ifdef DEBUG
-    std::cout << "ATTN Trans (K)\n";
-    EventsInHead.back().wait();
-    TensorOnHost<float> y7(new float[Input.Dim0 * HEAD_DIM], HEAD_DIM, Input.Dim0);
-    OCL.Map(H5, y7);
-    TensorOnHost<float> r7 = TransTest(r4);
+        TensorOnFPGA H5 = this->OCL.Trans<DType>(H4, EventsInHead, RunEvent);
+        EventsInHead.push_back(RunEvent);
+    #ifdef DEBUG
+        std::cout << "ATTN Trans (K)\n";
+        EventsInHead.back().wait();
+        TensorOnHost<DType> y7(new DType[Input.Dim0 * HEAD_DIM], HEAD_DIM, Input.Dim0);
+        OCL.Map(H5, y7);
+        TensorOnHost<DType> r7 = TransTest(r4);
 
-    // for (int i = 0; i < 16; i++)
-    // {
-    //   for (int j = 0; j < HEAD_DIM; j++)
-    //     std::cout << y7.Data[i * HEAD_DIM + j] << " ";
-    //   std::cout << std::endl;
-    // }
+    //     // for (int i = 0; i < 16; i++)
+    //     // {
+    //     //   for (int j = 0; j < HEAD_DIM; j++)
+    //     //     std::cout << y7.Data[i * HEAD_DIM + j] << " ";
+    //     //   std::cout << std::endl;
+    //     // }
 
-    // std::cout << std::endl;
+    //     // std::cout << std::endl;
 
-    // for (int i = 0; i < 16; i++)
-    // {
-    //   for (int j = 0; j < HEAD_DIM; j++)
-    //     std::cout << r7.Data[i * HEAD_DIM + j] << " ";
-    //   std::cout << std::endl;
-    // }
-    std::cout << (r7 == y7 ? "ATTN Trans (K) PASS!!!\n" : "ATTN Trans (K) ERROR!!!\n");
-#endif
+    //     // for (int i = 0; i < 16; i++)
+    //     // {
+    //     //   for (int j = 0; j < HEAD_DIM; j++)
+    //     //     std::cout << r7.Data[i * HEAD_DIM + j] << " ";
+    //     //   std::cout << std::endl;
+    //     // }
+    //     std::cout << (r7 == y7 ? "ATTN Trans (K) PASS!!!\n" : "ATTN Trans (K) ERROR!!!\n");
+    #endif
 
-    TensorOnFPGA H6 = this->OCL.Mul<DType>(H3, H5, EventsInHead, RunEvent);
-    EventsInHead.push_back(RunEvent);
-#ifdef DEBUG
-    std::cout << "ATTN Mul (Q K^T)\n";
-    EventsInHead.back().wait();
-    TensorOnHost<float> y8(new float[Input.Dim0 * Input.Dim0], Input.Dim0, Input.Dim0);
-    OCL.Map(H6, y8);
-    TensorOnHost<float> r8 = r3 * r7;
-    std::cout << (r8 == y8 ? "ATTN Mul (Q K^T) PASS!!!\n" : "ATTN Mul (Q K^T) ERROR!!!\n");
-#endif
+        TensorOnFPGA H6 = this->OCL.Mul<DType>(H3, H5, EventsInHead, RunEvent);
+        EventsInHead.push_back(RunEvent);
+    #ifdef DEBUG
+        std::cout << "ATTN Mul (Q K^T)\n";
+        EventsInHead.back().wait();
+        TensorOnHost<DType> y8(new DType[Input.Dim0 * Input.Dim0], Input.Dim0, Input.Dim0);
+        OCL.Map(H6, y8);
+        TensorOnHost<DType> r8 = r3 * r7;
+        std::cout << (r8 == y8 ? "ATTN Mul (Q K^T) PASS!!!\n" : "ATTN Mul (Q K^T) ERROR!!!\n");
+    #endif
 
-    TensorOnFPGA H7 = this->OCL.Softmax<DType>(H6, EventsInHead, RunEvent);
-    EventsInHead.push_back(RunEvent);
-#ifdef DEBUG
-    std::cout << "ATTN Softmax\n";
-    EventsInHead.back().wait();
-    TensorOnHost<float> y9(new float[Input.Dim0 * Input.Dim0], Input.Dim0, Input.Dim0);
-    OCL.Map(H7, y9);
-    TensorOnHost<float> r9 = SoftmaxTest(r8);
-    std::cout << (r9 == y9 ? "ATTN Softmax PASS!!!\n" : "ATTN Softmax ERROR!!!\n");
-#endif
+        TensorOnFPGA H7 = this->OCL.Softmax<DType>(H6, EventsInHead, RunEvent);
+        EventsInHead.push_back(RunEvent);
+    #ifdef DEBUG
+        std::cout << "ATTN Softmax\n";
+        EventsInHead.back().wait();
+        TensorOnHost<DType> y9(new DType[Input.Dim0 * Input.Dim0], Input.Dim0, Input.Dim0);
+        OCL.Map(H7, y9);
+        TensorOnHost<DType> r9 = SoftmaxTest(r8);
+        std::cout << (r9 == y9 ? "ATTN Softmax PASS!!!\n" : "ATTN Softmax ERROR!!!\n");
+    #endif
 
-    TensorOnFPGA H8 = this->OCL.Mul<DType>(H7, H2, EventsInHead, RunEvent);
-    EventsInHead.push_back(RunEvent);
-#ifdef DEBUG
-    std::cout << "ATTN Mul (score V)\n";
-    EventsInHead.back().wait();
-    TensorOnHost<float> y10(new float[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
-    OCL.Map(H8, y10);
-    TensorOnHost<float> r10 = r9 * r2;
-    std::cout << (r10 == y10 ? "ATTN Mul (score V) PASS!!!\n" : "ATTN Mul (score V) ERROR!!!\n");
-#endif
+        TensorOnFPGA H8 = this->OCL.Mul<DType>(H7, H2, EventsInHead, RunEvent);
+        EventsInHead.push_back(RunEvent);
+    #ifdef DEBUG
+        std::cout << "ATTN Mul (score V)\n";
+        EventsInHead.back().wait();
+        TensorOnHost<DType> y10(new DType[Input.Dim0 * HEAD_DIM], Input.Dim0, HEAD_DIM);
+        OCL.Map(H8, y10);
+        TensorOnHost<DType> r10 = r9 * r2;
+        std::cout << (r10 == y10 ? "ATTN Mul (score V) PASS!!!\n" : "ATTN Mul (score V) ERROR!!!\n");
+    #endif
 
-    Tail.push_back(RunEvent);
+        Tail.push_back(RunEvent);
 
-    Heads.push_back(H8);
+        Heads.push_back(H8);
   }
 
-  assert(Tail.size() == HEAD_NUM);
-  for (unsigned int IterSup = 0; IterSup < HEAD_NUM; IterSup++)
-    Events.push_back(Tail[IterSup]);
+    assert(Tail.size() == HEAD_NUM);
+    for (unsigned int IterSup = 0; IterSup < HEAD_NUM; IterSup++)
+      Events.push_back(Tail[IterSup]);
 
-  this->CurLen += Input.Dim0;
+    this->CurLen += Input.Dim0;
 
-  assert(Heads.size() == HEAD_NUM);
+    assert(Heads.size() == HEAD_NUM);
 
-  cl::Event RunEvent;
+    cl::Event RunEvent;
 
-  TensorOnFPGA tmp = this->WOFPGA.SubTensorRow(0, HEAD_DIM * EMBEDDING_DIM);
-  TensorOnFPGA Sum = this->OCL.Mul<DType>(Heads[0], tmp, Events, RunEvent);
-  Events.push_back(RunEvent);
-  // #ifdef DEBUG
-  //   std::cout << "ATTN Mul (output)\n";
-  //   Events.back().wait();
-  //   TensorOnHost<float> x11(new float[HEAD_DIM * EMBEDDING_DIM], HEAD_DIM, EMBEDDING_DIM);
-  //   OCL.Map(tmp, x11);
-  //   TensorOnHost<float> y11(new float[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
-  //   OCL.Map(Sum, y11);
-  //   TensorOnHost<float> r11 = r10 * x11;
-  //   std::cout << (r11 == y11 ? "ATTN Mul (output) PASS!!!\n" : "ATTN Mul (output) ERROR!!!\n");
-  // #endif
+    TensorOnFPGA tmp = this->WOFPGA.SubTensorRow(0, HEAD_DIM * EMBEDDING_DIM);
+    TensorOnFPGA Sum = this->OCL.Mul<DType>(Heads[0], tmp, Events, RunEvent);
+    // Events.push_back(RunEvent);
+    // #ifdef DEBUG
+    //   std::cout << "ATTN Mul (output)\n";
+    //   Events.back().wait();
+    //   TensorOnHost<DType> x11(new DType[HEAD_DIM * EMBEDDING_DIM], HEAD_DIM, EMBEDDING_DIM);
+    //   OCL.Map(tmp, x11);
+    //   TensorOnHost<DType> y11(new DType[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
+    //   OCL.Map(Sum, y11);
+    //   TensorOnHost<DType> r11 = r10 * x11;
+    //   std::cout << (r11 == y11 ? "ATTN Mul (output) PASS!!!\n" : "ATTN Mul (output) ERROR!!!\n");
+    // #endif
 
-  //   TensorOnFPGA T1 = this->OCL.Add<DType>(Sum, Sum, Events, RunEvent);
-  //   Events.push_back(RunEvent);
-  // #ifdef DEBUG
-  //   std::cout << "ATTN Add\n";
-  //   Events.back().wait();
-  //   TensorOnHost<float> y12(new float[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
-  //   OCL.Map(T1, y12);
-  //   TensorOnHost<float> r12 = y11 + y11;
-  //   std::cout << (r12 == y12 ? "ATTN Add PASS!!!\n" : "ATTN Add ERROR!!!\n");
-  // #endif
+    //   TensorOnFPGA T1 = this->OCL.Add<DType>(Sum, Sum, Events, RunEvent);
+    //   Events.push_back(RunEvent);
+    // #ifdef DEBUG
+    //   std::cout << "ATTN Add\n";
+    //   Events.back().wait();
+    //   TensorOnHost<DType> y12(new DType[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
+    //   OCL.Map(T1, y12);
+    //   TensorOnHost<DType> r12 = y11 + y11;
+    //   std::cout << (r12 == y12 ? "ATTN Add PASS!!!\n" : "ATTN Add ERROR!!!\n");
+    // #endif
 
-  for (unsigned int IterHead = 1; IterHead < HEAD_NUM; IterHead++)
-  {
-    tmp = this->WOFPGA.SubTensorRow(IterHead * HEAD_DIM * EMBEDDING_DIM, HEAD_DIM * EMBEDDING_DIM);
-    TensorOnFPGA T0 =
-        this->OCL.Mul<DType>(Heads[IterHead], tmp, Events, RunEvent);
-    Events.push_back(RunEvent);
+    for (unsigned int IterHead = 1; IterHead < HEAD_NUM; IterHead++)
+    {
+      tmp = this->WOFPGA.SubTensorRow(IterHead * HEAD_DIM * EMBEDDING_DIM, HEAD_DIM * EMBEDDING_DIM);
+      TensorOnFPGA T0 =
+          this->OCL.Mul<DType>(Heads[IterHead], tmp, Events, RunEvent);
+      Events.push_back(RunEvent);
 
-    TensorOnFPGA T1 = this->OCL.Add<DType>(Sum, T0, Events, RunEvent);
-    Events.push_back(RunEvent);
+      TensorOnFPGA T1 = this->OCL.Add<DType>(Sum, T0, Events, RunEvent);
+      Events.push_back(RunEvent);
 
-    Sum = T1;
-  }
+      Sum = T1;
+    }
 
-  return Sum;
+    return Sum;
   // return TensorOnFPGA();
 }
 
@@ -827,11 +867,11 @@ TensorOnFPGA FeedForwardLayer<DType>::operator()(TensorOnFPGA Input, std::vector
 #ifdef DEBUG
   std::cout << "FFN Mul0\n";
   Events.back().wait();
-  TensorOnHost<float> x0(new float[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
+  TensorOnHost<ap_int<8>> x0(new ap_int<8>[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
   OCL.Map(Input, x0);
-  TensorOnHost<float> y0(new float[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
+  TensorOnHost<ap_int<8>> y0(new ap_int<8>[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
   OCL.Map(H0, y0);
-  TensorOnHost<float> r0 = x0 * this->W0Host;
+  TensorOnHost<ap_int<8>> r0 = x0 * this->W0Host;
   std::cout << (r0 == y0 ? "FFN Mul0 PASS!!!\n" : "FFN Mul0 ERROR!!!\n");
 #endif
 
@@ -840,9 +880,9 @@ TensorOnFPGA FeedForwardLayer<DType>::operator()(TensorOnFPGA Input, std::vector
 #ifdef DEBUG
   std::cout << "FFN Silu\n";
   Events.back().wait();
-  TensorOnHost<float> x1(new float[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
+  TensorOnHost<ap_int<8>> x1(new ap_int<8>[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
   OCL.Map(H1, x1);
-  TensorOnHost<float> r1 = SiluTest(r0);
+  TensorOnHost<ap_int<8>> r1 = SiluTest(r0);
   std::cout << (r1 == x1 ? "FFN Silu PASS!!!\n" : "FFN Silu ERROR!!!\n");
 #endif
 
@@ -851,9 +891,9 @@ TensorOnFPGA FeedForwardLayer<DType>::operator()(TensorOnFPGA Input, std::vector
 #ifdef DEBUG
   std::cout << "FFN Mul1\n";
   Events.back().wait();
-  TensorOnHost<float> x2(new float[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
+  TensorOnHost<ap_int<8>> x2(new ap_int<8>[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
   OCL.Map(H2, x2);
-  TensorOnHost<float> r2 = x0 * this->W2Host;
+  TensorOnHost<ap_int<8>> r2 = x0 * this->W2Host;
   std::cout << (r2 == x2 ? "FFN Mul1 PASS!!!\n" : "FFN Mul1 ERROR!!!\n");
 #endif
 
@@ -862,9 +902,9 @@ TensorOnFPGA FeedForwardLayer<DType>::operator()(TensorOnFPGA Input, std::vector
 #ifdef DEBUG
   std::cout << "FFN Dot\n";
   Events.back().wait();
-  TensorOnHost<float> x3(new float[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
+  TensorOnHost<ap_int<8>> x3(new ap_int<8>[Input.Dim0 * HIDDEN_DIM], Input.Dim0, HIDDEN_DIM);
   OCL.Map(H3, x3);
-  TensorOnHost<float> r3 = DotTest(r1, r2);
+  TensorOnHost<ap_int<8>> r3 = DotTest(r1, r2);
   std::cout << (r3 == x3 ? "FFN Dot PASS!!!\n" : "FFN Dot ERROR!!!\n");
 #endif
 
@@ -873,18 +913,11 @@ TensorOnFPGA FeedForwardLayer<DType>::operator()(TensorOnFPGA Input, std::vector
 #ifdef DEBUG
   std::cout << "FFN Mul2\n";
   Events.back().wait();
-  TensorOnHost<float> x4(new float[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
+  TensorOnHost<ap_int<8>> x4(new ap_int<8>[Input.Dim0 * EMBEDDING_DIM], Input.Dim0, EMBEDDING_DIM);
   OCL.Map(H4, x4);
-  TensorOnHost<float> r4 = x3 * this->W1Host;
+  TensorOnHost<ap_int<8>> r4 = x3 * this->W1Host;
   std::cout << (r4 == x4 ? "FFN Mul2 PASS!!!\n" : "FFN Mul2 ERROR!!!\n");
 #endif
-
-  // Events.back().wait();
-  // H0.ReleaseMem();
-  // H1.ReleaseMem();
-  // H2.ReleaseMem();
-  // H3.ReleaseMem();
-  // H4.ReleaseMem();
 
   return H4;
 }
@@ -1067,17 +1100,17 @@ int main(int argc, char **argv)
   // Llama.load(Ws);
 
   OCLWrap OCL(context, program, queue);
-  // FeedForwardLayer<float> ffn(OCL);
-  AttentionLayer<float> attn(OCL);
+  // FeedForwardLayer<ap_int<8>> ffn(OCL);
+  AttentionLayer<ap_int<8>> attn(OCL);
   std::ifstream Ws("/home/chi/llama_fpga/weigths.dat", std::ios::binary | std::ios::in);
   // ffn.load(Ws);
   // ffn.migrate();
   attn.load(Ws);
   attn.migrate();
 
-  TensorOnHost<float> Input(GenerateRandomInput<float>(16 * EMBEDDING_DIM), 16, EMBEDDING_DIM);
+  TensorOnHost<ap_int<8>> Input(GenerateRandomInput<ap_int<8>>(32 * EMBEDDING_DIM), 32, EMBEDDING_DIM);
   TensorOnFPGA _Input;
-  _Input.Data = OCL.AllocateReadBuffer<float>(16 * EMBEDDING_DIM);
+  _Input.Data = OCL.AllocateReadBuffer<ap_int<8>>(32 * EMBEDDING_DIM);
   _Input.Dim0 = Input.Dim0;
   _Input.Dim1 = Input.Dim1;
   OCL.Map(Input, _Input);
