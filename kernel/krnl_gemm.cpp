@@ -33,7 +33,6 @@ void ReadFromMem(
                 for (unsigned int IterEntry = 0; IterEntry < DATA_PACK_NUM; IterEntry++)
                 {
                     A[IterEntry] = MatrixAInMem[INDEX_FROM_2D(IterBlockM * DATA_PACK_NUM + IterEntry, IterCol, DimN)];
-        
                 }
                 // std::cout << "read A(" << IterBlockM << "," << IterBlockN << "," << IterCol << ")\n";
                 MatrixA.write(A);
@@ -144,7 +143,8 @@ void UnpackTri(
 void Mac(
     hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
-    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes,
+    float Scale)
 {
 
     hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
@@ -153,14 +153,15 @@ void Mac(
 
 #pragma HLS DATAFLOW
     Mul(MatrixATaged, MatrixBTri, SumBuf, Flush, Exit);
-    Add(SumBuf, Flush, Exit, AccRes);
+    Add(SumBuf, Flush, Exit, AccRes, Scale);
 }
 
 void Mac(
     hls::stream<DualTaggedType<DATA_TYPE>::t_TypeInt, DATA_PACK_NUM> &MatrixATaged,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTri,
     hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &MatrixBTriNxt,
-    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes,
+    float Scale)
 {
 
     hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> SumBuf;
@@ -169,7 +170,7 @@ void Mac(
 
 #pragma HLS DATAFLOW
     Mul(MatrixATaged, MatrixBTri, MatrixBTriNxt, SumBuf, Flush, Exit);
-    Add(SumBuf, Flush, Exit, AccRes);
+    Add(SumBuf, Flush, Exit, AccRes, Scale);
 }
 
 void Mul(
@@ -298,7 +299,8 @@ void Add(
     hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit,
-    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes)
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes,
+    float Scale)
 {
     WideType<ap_int<32>, DATA_PACK_NUM> SumVec = WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt(0);
 
@@ -316,7 +318,7 @@ void Add(
             SumVec[IterAcc] += ReadVec[IterAcc];
             if (ReadFlush[IterAcc])
             {
-                AccRes.write(int(SumVec[IterAcc] / 127.0));
+                AccRes.write(int(SumVec[IterAcc] / Scale + 0.5));
                 SumVec[IterAcc] = 0;
             }
         }
@@ -357,7 +359,8 @@ extern "C"
         const unsigned int DimK,
         DATA_TYPE MatrixAInMem[MAX_MATRIX_SIZE],
         DATA_TYPE MatrixBInMem[MAX_MATRIX_SIZE],
-        DATA_TYPE MatrixResInMem[MAX_MATRIX_SIZE])
+        DATA_TYPE MatrixResInMem[MAX_MATRIX_SIZE],
+        float Scale)
     {
 
         hls::stream<WideType<DATA_TYPE, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> MatrixA;
@@ -391,11 +394,10 @@ extern "C"
         for (unsigned int IterMac = 0; IterMac < DATA_PACK_NUM - 1; IterMac++)
         {
 #pragma HLS UNROLL
-            Mac(MatrixATaged[IterMac], MatrixBTri[IterMac], MatrixBTri[IterMac + 1], AccRes[IterMac]);
+            Mac(MatrixATaged[IterMac], MatrixBTri[IterMac], MatrixBTri[IterMac + 1], AccRes[IterMac], Scale);
         }
-        Mac(MatrixATaged[DATA_PACK_NUM - 1], MatrixBTri[DATA_PACK_NUM - 1], AccRes[DATA_PACK_NUM - 1]);
+        Mac(MatrixATaged[DATA_PACK_NUM - 1], MatrixBTri[DATA_PACK_NUM - 1], AccRes[DATA_PACK_NUM - 1], Scale);
 
         WriteToMem(DimM, DimK, AccRes, MatrixResInMem);
-
     }
 }

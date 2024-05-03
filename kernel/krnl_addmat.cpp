@@ -13,7 +13,9 @@ extern "C"
                     const unsigned int DimM,
                     const unsigned int DimN,
                     DATA_TYPE MatrixRes[MAX_MATRIX_SIZE],
-                    const unsigned int OffsetRes)
+                    const unsigned int OffsetRes,
+                    float s1,
+                    float s2)
     {
         WideType<DATA_TYPE, DATA_PACK_NUM> DA;
         WideType<DATA_TYPE, DATA_PACK_NUM> DB;
@@ -24,7 +26,7 @@ extern "C"
             DA = ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixA[OffsetA + IterAdd * DATA_PACK_NUM]))[0];
             DB = ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixB[OffsetB + IterAdd * DATA_PACK_NUM]))[0];
             for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++){
-                DR[IterUnroll] = DA[IterUnroll] + DB[IterUnroll];
+                DR[IterUnroll] = int(float(DA[IterUnroll]) / s1 + float(DB[IterUnroll]) / s2 + 0.5);
             }
             ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + IterAdd * DATA_PACK_NUM]))[0] = DR;
         }

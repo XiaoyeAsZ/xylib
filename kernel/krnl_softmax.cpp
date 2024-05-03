@@ -16,7 +16,8 @@ void ProcessBlock(DATA_TYPE *MatrixA,
                   hls::stream<WideType<float, DATA_PACK_NUM>::t_TypeInt> &Dd,
                   hls::stream<float> &Bs,
                   hls::stream<float> &Ds,
-                  DATA_TYPE *res)
+                  DATA_TYPE *res,
+                  float Scale1)
 {
     for (unsigned int IterRow = 0; IterRow < DimM; IterRow++)
     {
@@ -30,7 +31,7 @@ void ProcessBlock(DATA_TYPE *MatrixA,
             WideType<float, DATA_PACK_NUM> DE;
             for (unsigned int IterExp = 0; IterExp < DATA_PACK_NUM; IterExp++)
             {
-                DE[IterExp] = hls::exp(float(DIn[IterExp]) / 127.0);
+                DE[IterExp] = hls::exp(float(DIn[IterExp]) / Scale1);
             }
 
             float PartialSum = 0;
@@ -57,7 +58,8 @@ void Merge(DATA_TYPE *MatrixRes,
            const unsigned int DimN,
            hls::stream<WideType<float, DATA_PACK_NUM>::t_TypeInt> &Dd,
            hls::stream<float> &Bs,
-           hls::stream<float> &Ds)
+           hls::stream<float> &Ds,
+           float Scale2)
 {
     for (unsigned int IterRow = 0; IterRow < DimM; IterRow++)
     {
@@ -72,7 +74,7 @@ void Merge(DATA_TYPE *MatrixRes,
             bs = Bs.read();
             for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++)
             {
-                WD[IterUnroll] = int( RD[IterUnroll] * bs / Rs * 127);
+                WD[IterUnroll] = int(RD[IterUnroll] * bs / Rs * Scale2 + 0.5);
             }
             ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + INDEX_FROM_2D(IterRow, IterBlock * DATA_PACK_NUM, DimN)]))[0] = WD;
         }
@@ -86,14 +88,16 @@ extern "C"
                      const unsigned int DimM,
                      const unsigned int DimN,
                      DATA_TYPE MatrixRes[MAX_MATRIX_SIZE],
-                     const unsigned int OffsetRes)
+                     const unsigned int OffsetRes,
+                     float Scale1,
+                     float Scale2)
     {
         hls::stream<WideType<float, DATA_PACK_NUM>::t_TypeInt, MAX_FIFO_DEPTH> Dd;
         hls::stream<float, MAX_FIFO_DEPTH> Bs;
         hls::stream<float, MAX_FIFO_DEPTH> Ds;
 
 #pragma HLS DATAFLOW
-        ProcessBlock(MatrixA, OffsetA, DimM, DimN, Dd, Bs, Ds, MatrixRes);
-        Merge(MatrixRes, OffsetRes, DimM, DimN, Dd, Bs, Ds);
+        ProcessBlock(MatrixA, OffsetA, DimM, DimN, Dd, Bs, Ds, MatrixRes, Scale1);
+        Merge(MatrixRes, OffsetRes, DimM, DimN, Dd, Bs, Ds, Scale2);
     }
 }

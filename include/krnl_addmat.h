@@ -22,7 +22,9 @@ extern "C"
                     const unsigned int DimM,
                     const unsigned int DimN,
                     DATA_TYPE *MatrixRes,
-                    const unsigned int OffsetRes);
+                    const unsigned int OffsetRes,
+                    float s1,
+                    float s2);
 }
 
 #endif

@@ -16,7 +16,8 @@ extern "C"
                   DATA_TYPE *MatrixPos,
                   const unsigned int OffsetP,
                   DATA_TYPE *MatrixRes,
-                  const unsigned int OffsetRes)
+                  const unsigned int OffsetRes,
+                  float Scale)
     {
         assert(DimN >= DATA_PACK_NUM);
 
@@ -35,9 +36,9 @@ extern "C"
                 for (unsigned int IterR = 0; IterR < DATA_PACK_NUM; IterR += 2)
                 {
                     ap_int<32> T1 = DIn[IterR] * DW[IterR] - DIn[IterR + 1] * DW[IterR + 1];
-                    DOut[IterR] = int(T1 / 127.0);
+                    DOut[IterR] = int(T1 / Scale + 0.5);
                     ap_int<32> T2 = DIn[IterR] * DW[IterR + 1] + DIn[IterR + 1] * DW[IterR];
-                    DOut[IterR + 1] = int(T2 / 127.0);
+                    DOut[IterR + 1] = int(T2 / Scale + 0.5);
                         
                 }
                 ((WideType<DATA_TYPE, DATA_PACK_NUM> *)(&MatrixRes[OffsetRes + INDEX_FROM_2D(IterRow, IterBlock * DATA_PACK_NUM, DimN)]))[0] = DOut;

@@ -22,7 +22,8 @@ extern "C"
                   DATA_TYPE *PosVec,
                   const unsigned int OffsetV,
                   DATA_TYPE *MatrixRes,
-                  const unsigned int OffsetRes);
+                  const unsigned int OffsetRes,
+                  float Scale);
 }
 
 #endif

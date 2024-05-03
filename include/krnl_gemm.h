@@ -51,7 +51,8 @@ void Add(
     hls::stream<WideType<ap_int<32>, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &SumBuf,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Flush,
     hls::stream<WideType<bool, DATA_PACK_NUM>::t_TypeInt, DATA_PACK_NUM> &Exit,
-    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes);
+    hls::stream<DATA_TYPE, DATA_PACK_NUM> &AccRes,
+    float Scale);
 
 void WriteToMem(
     const unsigned int DimM,
@@ -67,7 +68,8 @@ extern "C"
         const unsigned int DimK,
         DATA_TYPE *MatrixAInMem,
         DATA_TYPE *MatrixBInMem,
-        DATA_TYPE *MatrixResInMem);
+        DATA_TYPE *MatrixResInMem,
+        float Scale);
 }
 
 #endif

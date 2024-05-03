@@ -2,18 +2,18 @@
 #define __LLAMA__
 
 #define LAYER_NUM 1
-#define HEAD_NUM 1
-#define EMBEDDING_DIM 64
-#define HEAD_DIM 32
-#define HIDDEN_DIM 64
+#define HEAD_NUM 32
+#define EMBEDDING_DIM 4096
+#define HEAD_DIM 128
+#define HIDDEN_DIM 11008
 #define TEST_TOKEN_LEN 16
 #define GEMM_MAX_MATRIX_M 4096
 #define GEMM_MAX_MATRIX_N 4096
 #define GEMM_MAX_MATRIX_K 4096
 
-#define MAX_TOKEN_LEN 1024
+#define MAX_TOKEN_LEN 2048
 
-#define RANDOM_INPUT
+// #define RANDOM_INPUT
 #define DEBUG
 
 #include <vector>
@@ -24,6 +24,8 @@ struct TensorOnFPGA
     unsigned int Offset;
     unsigned int Dim0;
     unsigned int Dim1;
+
+    float Scale = 0;
 
     TensorOnFPGA()
     {
@@ -59,6 +61,8 @@ struct TensorOnHost
     unsigned int Dim0;
     unsigned int Dim1;
 
+    float Scale = 0;
+
     TensorOnHost()
     {
         Dim0 = 0;
@@ -76,6 +80,20 @@ struct TensorOnHost
     {
         assert(Len % Dim1 == 0);
         return TensorOnHost(&Data[Start], Len / Dim1, Dim1);
+    }
+};
+
+struct QuantPack
+{
+    float Scale0;
+    float Scale1;
+    float Scale2;
+
+    QuantPack(float s0, float s1, float s2)
+    {
+        this->Scale0 = s0;
+        this->Scale1 = s1;
+        this->Scale2 = s2;
     }
 };
 
@@ -100,9 +118,8 @@ private:
 
     cl::Kernel KrnlGemv;
 
-
 public:
-    OCLWrap(cl::Context &Ctx, cl::Program Prog, cl::CommandQueue &Queue);
+    OCLWrap(cl::Context &Ctx, cl::Program Prog, cl::CommandQueue &Queue, std::ifstream &F);
     ~OCLWrap();
 
     template <typename DType>
@@ -121,21 +138,21 @@ public:
     void Map(TensorOnFPGA &Device, TensorOnHost<DType> &Host);
 
     template <typename DType>
-    TensorOnFPGA Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA Mul(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent, float Scale);
 
     template <typename DType>
-    TensorOnFPGA Add(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA Add(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent, float Scale);
 
     template <typename DType>
-    TensorOnFPGA Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA Dot(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent, float Scale);
 
     template <typename DType>
-    TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA Silu(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent, float Scale);
 
     TensorOnHost<ap_int<8>> freq;
     TensorOnFPGA Freq;
     template <typename DType>
-    TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA REmb(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent, float ResScale);
 
     template <typename DType>
     void Move(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent);
@@ -144,10 +161,12 @@ public:
     TensorOnFPGA Trans(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
 
     template <typename DType>
-    TensorOnFPGA Softmax(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA Softmax(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent, float ResScale);
 
     template <typename DType>
-    TensorOnFPGA RMSNorm(TensorOnFPGA &Tensor0, std::vector<cl::Event> &Events, cl::Event &RunEvent);
+    TensorOnFPGA RMSNorm(TensorOnFPGA &Tensor0, TensorOnFPGA &Tensor1, std::vector<cl::Event> &Events, cl::Event &RunEvent, float ResScale);
+
+    void load_freq(std::ifstream &F);
 };
 
 template <typename DType>
@@ -171,11 +190,14 @@ private:
     unsigned int MaxCacheLen = 1024;
     unsigned int CurLen = 0;
 
+    std::vector<QuantPack> OpQuantS;
+
 public:
     AttentionLayer(OCLWrap &OCL);
     ~AttentionLayer();
 
-    void load(std::ifstream &F);
+    void load_weight(std::ifstream &F);
+    void load_quant(std::ifstream &F);
     void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
@@ -194,11 +216,14 @@ private:
     TensorOnFPGA W1FPGA;
     TensorOnFPGA W2FPGA;
 
+    std::vector<QuantPack> OpQuantS;
+
 public:
     FeedForwardLayer(OCLWrap &OCL);
     ~FeedForwardLayer();
 
-    void load(std::ifstream &F);
+    void load_weight(std::ifstream &F);
+    void load_quant(std::ifstream &F);
     void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
@@ -209,16 +234,17 @@ class RMSNormLayer
 private:
     OCLWrap &OCL;
 
-    TensorOnFPGA Ep;
+    TensorOnHost<DType> WeightHost;
     TensorOnFPGA Weight;
 
 public:
     RMSNormLayer(OCLWrap &OCL);
     ~RMSNormLayer();
 
-    void load(std::ifstream &F);
+    void load_weight(std::ifstream &F);
+    void load_quant(std::ifstream &F);
     void migrate();
-    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
+    TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events, float Scale);
 };
 
 template <typename DType>
@@ -232,11 +258,14 @@ private:
     RMSNormLayer<DType> NormAttn;
     RMSNormLayer<DType> NormFFN;
 
+    std::vector<QuantPack> OpQuantS;
+
 public:
     TransformerBlock(OCLWrap &OCL);
     ~TransformerBlock();
 
-    void load(std::ifstream &F);
+    void load_weight(std::ifstream &F);
+    void load_quant(std::ifstream &F);
     void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };
@@ -253,7 +282,8 @@ public:
     Transformer(OCLWrap &OCL);
     ~Transformer();
 
-    void load(std::ifstream &F);
+    void load_weight(std::ifstream &F);
+    void load_quant(std::ifstream &F);
     void migrate();
     TensorOnFPGA operator()(TensorOnFPGA Input, std::vector<cl::Event> &Events);
 };

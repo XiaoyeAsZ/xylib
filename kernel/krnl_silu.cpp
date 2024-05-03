@@ -12,7 +12,9 @@ extern "C"
                   const unsigned int DimM,
                   const unsigned int DimN,
                   DATA_TYPE *MatrixRes,
-                  const unsigned int OffsetRes)
+                  const unsigned int OffsetRes,
+                  float Scale1,
+                  float Scale2)
     {
         for (unsigned int IterRound = 0; IterRound < DimM * DimN / DATA_PACK_NUM; IterRound++)
         {
@@ -23,7 +25,7 @@ extern "C"
             for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++)
             {
 
-                Res[IterUnroll] = (Input[IterUnroll] * (1.0 / (1.0 + hls::exp(-Input[IterUnroll] / 127.0)))) * 127;
+                Res[IterUnroll] = int((Input[IterUnroll] * (1.0 / (1.0 + hls::exp(-Input[IterUnroll] / Scale1)))) * Scale2 + 0.5);
                 // std::cout << "source: " << Input[IterUnroll] << " after: " << Res[IterUnroll] << " ";
             }
             // std::cout << std::endl;

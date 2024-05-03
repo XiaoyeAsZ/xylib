@@ -14,7 +14,8 @@ extern "C"
                     const unsigned int DimM,
                     const unsigned int DimN,
                     DATA_TYPE *MatrixRes,
-                    const unsigned int OffsetRes)
+                    const unsigned int OffsetRes,
+                    float Scale)
     {
 
         WideType<DATA_TYPE, DATA_PACK_NUM> AIn;
@@ -31,7 +32,7 @@ extern "C"
             for (unsigned int IterUnroll = 0; IterUnroll < DATA_PACK_NUM; IterUnroll++)
             {
                 ap_int<32> TRes = AIn[IterUnroll] * BIn[IterUnroll];
-                Res[IterUnroll] = int(TRes / 127.0);
+                Res[IterUnroll] = int(TRes / Scale + 0.5);
                 // std::cout << "mul " << AIn[IterUnroll] << " and " << BIn[IterUnroll] << " res : " << Res[IterUnroll] << std::endl;
             }
 

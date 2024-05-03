@@ -168,6 +168,12 @@ $(BUILD_DIR)/krnl_addmat.xo:
 	v++ $(VPPFLAGS) -c -k KrnlAddMat $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_addmat.cpp -o $@
 
 
+$(BUILD_DIR)/krnl_rmsnorm.xo: 
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
+	mkdir -p $(BUILD_DIR)/$(VPP_LOG_DIRS)
+	v++ $(VPPFLAGS) -c -k KrnlRMSNorm $(KERNEL_INCLUDES) $(KERNEL_REPO)/krnl_rmsnorm.cpp -o $@
+
 # $(BUILD_DIR)/$(XO_NAME).xo: $(KERNEL_SRC_CPP) $(KERNEL_SRC_HEADERS)
 # 	mkdir -p $(BUILD_DIR)
 # 	mkdir -p $(BUILD_DIR)/$(VPP_TEMP_DIRS)
@@ -177,7 +183,7 @@ $(BUILD_DIR)/krnl_addmat.xo:
 
 
 # Link Kernel
-XO_LIST := $(BUILD_DIR)/krnl_gemm.xo $(BUILD_DIR)/krnl_gemv.xo $(BUILD_DIR)/krnl_dotmat.xo $(BUILD_DIR)/krnl_silu.xo $(BUILD_DIR)/krnl_remb.xo $(BUILD_DIR)/krnl_move.xo $(BUILD_DIR)/krnl_transpose.xo $(BUILD_DIR)/krnl_softmax.xo $(BUILD_DIR)/krnl_addmat.xo
+XO_LIST := $(BUILD_DIR)/krnl_gemm.xo $(BUILD_DIR)/krnl_gemv.xo $(BUILD_DIR)/krnl_dotmat.xo $(BUILD_DIR)/krnl_silu.xo $(BUILD_DIR)/krnl_remb.xo $(BUILD_DIR)/krnl_move.xo $(BUILD_DIR)/krnl_transpose.xo $(BUILD_DIR)/krnl_softmax.xo $(BUILD_DIR)/krnl_addmat.xo $(BUILD_DIR)/krnl_rmsnorm.xo
 $(BUILD_DIR)/$(XCLBIN): $(XO_LIST)
 	v++ $(VPPFLAGS) -l -o $@ $(XO_LIST)
 
